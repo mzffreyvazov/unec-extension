@@ -52,4 +52,34 @@ h2, h3 {
 #semestersList li, #subjectsList li, #allYearsList li { /* Added subjectsList li */
     padding: 3px 0;
 }
+.attendance-value {
+    font-weight: bold;
+    color: #1b5e20;
+}
+
+.attendance-value.high {
+    color: #d32f2f;
+}
+
+.attendance-loading {
+    color: #888;
+    font-style: italic;
+}
+
+.subject-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.subject-name {
+    flex-grow: 1;
+}
+
+#attendanceLoading {
+    margin: 10px 0;
+    font-style: italic;
+    color: #555;
+}
 

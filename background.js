@@ -64,7 +64,53 @@ async function extractSubjectsFromEvalPageHTML(pageHtml) { // Keep this name
     if (!pageHtml) throw new Error("BG: HTML for subject extraction is empty.");
     const subjects = await parseHTMLViaOffscreen(pageHtml, 'extractSubjects');
     if (!Array.isArray(subjects)) throw new Error("BG: Invalid data for subjects from offscreen.");
+    // Log to check if eduFormId is present
+    console.log("BG: Subjects extracted by offscreen (first one):", subjects.length > 0 ? subjects[0] : "No subjects");
     return subjects;
+}
+async function fetchSubjectEvaluationData(subjectId, eduFormId) { // Added eduFormId parameter
+    console.log(`BG: Fetching evaluation data for subject ID: ${subjectId}, eduFormId: ${eduFormId}`);
+    const evalPopupUrl = new URL('studentEvaluationPopup', BASE_AZ_URL).href;
+    
+    // Setup form data
+    const formData = new URLSearchParams();
+    formData.append('id', subjectId);
+    formData.append('lessonType', '');
+    if (!eduFormId) {
+        console.warn(`BG: eduFormId is missing for subjectId ${subjectId}. Using default '450'.`);
+        formData.append('edu_form_id', '450'); // Fallback, though ideally it should always be provided
+    } else {
+        formData.append('edu_form_id', eduFormId); // Use the provided eduFormId
+    }
+    
+    const reqOpts = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData.toString()
+    };
+    
+    try {
+        const response = await fetch(evalPopupUrl, reqOpts);
+        if (!response.ok) {
+            throw new Error(`Failed POST to get evaluation popup: ${response.status} ${response.statusText}`);
+        }
+        
+        const popupHtml = await response.text();
+        if (!popupHtml) throw new Error("Empty response from studentEvaluationPopup POST");
+        
+        // Extract attendance percentage from the popup HTML
+        const attendancePercentage = await parseHTMLViaOffscreen(popupHtml, 'extractAttendancePercentage');
+        return { 
+            success: true, 
+            attendancePercentage: attendancePercentage || "N/A"
+        };
+    } catch (error) {
+        console.error(`BG: Error fetching evaluation data for subject ${subjectId}:`, error);
+        return { success: false, error: error.message };
+    }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -164,6 +210,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } catch (error) {
                 console.error("BG: Error in 'fetchFullAcademicData':", error.message, error.stack ? error.stack.split('\n').slice(0,3).join('\n') : '');
                 sendResponse({ error: `BG Error: ${error.message}` });
+            }
+        })();
+        return true;
+    } 
+    else if (request.action === "fetchSubjectEvaluation") {
+        (async () => {
+            try {
+                if (!request.subjectId) throw new Error("Subject ID is missing");
+                if (!request.eduFormId) throw new Error("eduFormId is missing"); // Make it required
+                const result = await fetchSubjectEvaluationData(request.subjectId, request.eduFormId);
+                sendResponse(result);
+            } catch (error) {
+                console.error("BG: Error in fetchSubjectEvaluation handler:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    else if (request.action === "fetchAllSubjectsEvaluation") {
+        (async () => {
+            try {
+                if (!request.subjects || !Array.isArray(request.subjects)) {
+                    throw new Error("Invalid subjects array");
+                }
+                
+                const results = {};
+                for (const subject of request.subjects) {
+                    if (!subject.id || !subject.eduFormId) {
+                        console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
+                        results[subject.id || `unknown-${Math.random()}`] = { success: false, error: "Missing subject id or eduFormId", attendancePercentage: "N/A" };
+                        continue;
+                    }
+                    console.log(`BG: Fetching evaluation for subject: ${subject.name} (ID: ${subject.id}, eduFormId: ${subject.eduFormId})`);
+                    const result = await fetchSubjectEvaluationData(subject.id, subject.eduFormId); // Pass eduFormId
+                    results[subject.id] = result;
+                    await new Promise(resolve => setTimeout(resolve, 250)); // Slightly reduced delay
+                }
+                
+                sendResponse({ success: true, data: results });
+            } catch (error) {
+                console.error("BG: Error in fetchAllSubjectsEvaluation handler:", error);
+                sendResponse({ success: false, error: error.message });
             }
         })();
         return true;
