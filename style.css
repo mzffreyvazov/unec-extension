@@ -1,6 +1,6 @@
 body {
     font-family: Arial, sans-serif;
-    width: 380px; /* Adjusted width */
+    width: 500px; /* Increased from 380px to 500px */
     padding: 15px;
     box-sizing: border-box;
 }
@@ -99,7 +99,7 @@ h2, h3 {
     flex-direction: column; 
     align-items: flex-end; /* Align text to the right */
     font-size: 0.9em;
-    min-width: 100px; /* Give it some minimum width to prevent squishing */
+    min-width: 120px; /* Increased from 100px for better readability */
     text-align: right; /* Ensure text inside is right-aligned */
 }
 

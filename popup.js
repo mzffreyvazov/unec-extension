@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const { selectedYear, selectedSemester, semesters, subjects } = response.data; // Expect selectedSemester now
 
                 if (selectedYear) {
-                    selectedYearText.textContent = `${selectedYear.text} (ID: ${selectedYear.value})`;
+                    selectedYearText.textContent = selectedYear.text; // Removed ID display
                     selectedYearContainer.style.display = 'block';
                 } else {
                     showError("POPUP: No academic year was selected/found.");
@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 // Display the selected semester
                 if(selectedSemester) {
-                    selectedSemesterText.textContent = `${selectedSemester.text} (ID: ${selectedSemester.value})`;
+                    selectedSemesterText.textContent = selectedSemester.text; // Removed ID display
                     semestersContainer.style.display = 'block'; // Show the container if a semester is selected
                 } else if (selectedYear) {
                     showError("POPUP: No semester was selected by the background script.");
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'subject-name';
-                nameSpan.textContent = `${item.name} (ID: ${item.id})`;
+                nameSpan.textContent = item.name; // Removed ID display
                 listItem.appendChild(nameSpan);
 
                 const detailsContainer = document.createElement('div');
@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else { // for years and semesters
             items.forEach(item => {
                 const listItem = document.createElement('li');
-                listItem.textContent = `${item.text} (Value: ${item.value})`;
+                listItem.textContent = item.text; // Removed value display
                 listElement.appendChild(listItem);
             });
         }
