@@ -85,6 +85,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (subjects.length > 0) {
                         displayList(subjects, subjectsList, "subject");
                         subjectsContainer.style.display = 'block';
+                        
+                        // Automatically fetch attendance data after displaying subjects
+                        await fetchAttendanceData();
                     } else if (selectedSemester) { // Only show this if we expected subjects
                         showError("POPUP: No subjects were found for the selected year/semester.");
                     }
@@ -104,7 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    fetchAttendanceBtn.addEventListener('click', async () => {
+    // Extract the attendance fetching logic into a separate function
+    async function fetchAttendanceData() {
         if (!currentSubjects || currentSubjects.length === 0) {
             showError("No subjects available to fetch attendance data");
             return;
@@ -112,7 +116,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         fetchAttendanceBtn.disabled = true;
         attendanceLoadingDiv.style.display = 'block';
-        errorDiv.style.display = 'none';
         
         try {
             currentSubjects.forEach(subject => {
@@ -192,7 +195,10 @@ document.addEventListener('DOMContentLoaded', () => {
             attendanceLoadingDiv.style.display = 'none';
             fetchAttendanceBtn.disabled = false;
         }
-    });
+    }
+    
+    // Keep the manual fetch button for re-fetching if needed
+    fetchAttendanceBtn.addEventListener('click', fetchAttendanceData);
 
     function showError(message) {
         console.log("POPUP: Displaying error - ", message);
@@ -223,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const detailsContainer = document.createElement('div');
                 detailsContainer.className = 'subject-details-container';
-                // Details will be populated on "Fetch Attendance Data" button click
+                // Details will be populated automatically after subjects are loaded
                 listItem.appendChild(detailsContainer);
                 
                 listElement.appendChild(listItem);
