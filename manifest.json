@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "UNEC Cabinet - Offscreen Years",
+  "version": "1.0.0",
+  "description": "Fetches UNEC academic years using an offscreen document for parsing.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://kabinet.unec.edu.az/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

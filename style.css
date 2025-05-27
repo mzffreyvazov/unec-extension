@@ -1,0 +1,35 @@
+body {
+    font-family: Arial, sans-serif;
+    width: 350px;
+    padding: 15px;
+    box-sizing: border-box;
+}
+.container {
+    text-align: center;
+}
+button {
+    padding: 8px 15px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+#loading, #error {
+    margin-top: 10px;
+    padding: 5px;
+}
+#error {
+    color: red;
+    border: 1px solid red;
+}
+#years-container {
+    margin-top: 15px;
+    text-align: left;
+    border: 1px solid #ccc;
+    padding: 10px;
+}
+#yearsList {
+    list-style-type: none;
+    padding-left: 0;
+}
+#yearsList li {
+    padding: 3px 0;
+}
