@@ -1,17 +1,29 @@
+// popup.js
 document.addEventListener('DOMContentLoaded', () => {
-    const loadYearsBtn = document.getElementById('loadYearsBtn');
+    const loadDataBtn = document.getElementById('loadDataBtn');
     const loadingDiv = document.getElementById('loading');
     const errorDiv = document.getElementById('error');
-    const yearsContainer = document.getElementById('years-container');
-    const yearsList = document.getElementById('yearsList');
 
-    loadYearsBtn.addEventListener('click', async () => {
-        console.log("POPUP: Load Academic Years button clicked.");
+    const selectedYearContainer = document.getElementById('selected-year-container');
+    const selectedYearText = document.getElementById('selectedYearText');
+
+    const semestersContainer = document.getElementById('semesters-container');
+    const semestersList = document.getElementById('semestersList');
+
+    // Optional: for displaying all years for reference
+    // const allYearsContainer = document.getElementById('all-years-container');
+    // const allYearsList = document.getElementById('allYearsList');
+
+    loadDataBtn.addEventListener('click', async () => {
+        console.log("POPUP: 'Load Year & Semesters' button clicked.");
         loadingDiv.style.display = 'block';
         errorDiv.style.display = 'none';
-        yearsContainer.style.display = 'none';
-        yearsList.innerHTML = '';
-        loadYearsBtn.disabled = true;
+        selectedYearContainer.style.display = 'none';
+        semestersContainer.style.display = 'none';
+        // if (allYearsContainer) allYearsContainer.style.display = 'none';
+        semestersList.innerHTML = '';
+        // if (allYearsList) allYearsList.innerHTML = '';
+        loadDataBtn.disabled = true;
 
         try {
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -20,34 +32,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 resetButton();
                 return;
             }
-            console.log("POPUP: Current tab ID:", currentTab.id, "URL:", currentTab.url);
+            console.log("POPUP: Sending 'fetchYearsAndSemesters' to background. Tab ID:", currentTab.id);
 
             const response = await chrome.runtime.sendMessage({
-                action: "fetchAcademicYearsViaOffscreen",
+                action: "fetchYearsAndSemesters", // New action
                 tabId: currentTab.id
             });
 
-            console.log("POPUP: Response from background:", response);
+            console.log("POPUP: Response from background for 'fetchYearsAndSemesters':", response);
 
             if (chrome.runtime.lastError) {
                 showError(`POPUP: Error from runtime: ${chrome.runtime.lastError.message}`);
-                return;
-            }
+            } else if (response && response.error) {
+                showError(`POPUP: Background error: ${response.error}`);
+            } else if (response && response.data) {
+                const { selectedYear, semesters } = response.data;
 
-            if (response.error) {
-                showError(`POPUP: ${response.error}`);
-            } else if (response.years && Array.isArray(response.years)) {
-                if (response.years.length > 0) {
-                    displayYears(response.years);
+                if (selectedYear) {
+                    selectedYearText.textContent = `${selectedYear.text} (ID: ${selectedYear.value})`;
+                    selectedYearContainer.style.display = 'block';
                 } else {
-                    showError("POPUP: No academic years were extracted by the background script.");
+                    showError("POPUP: No academic year was selected or found by background.");
                 }
+
+                // Optional: Display all years if needed for reference
+                // if (response.data.allYears && allYearsList) {
+                //     displayList(response.data.allYears, allYearsList, "academic year reference");
+                //     if (allYearsContainer) allYearsContainer.style.display = 'block';
+                // }
+
+                if (semesters && Array.isArray(semesters)) {
+                    if (semesters.length > 0) {
+                        displayList(semesters, semestersList, "semester");
+                        semestersContainer.style.display = 'block';
+                    } else {
+                        showError("POPUP: No semesters were found for the selected academic year.");
+                    }
+                } else if (selectedYear) { // Only show "no semesters" if a year was processed
+                     showError("POPUP: Semesters data is missing or not an array.");
+                }
+
             } else {
-                showError("POPUP: Unexpected response or no academic years found. Check background console.");
+                showError("POPUP: Unexpected response structure. Check background console.");
             }
         } catch (err) {
             console.error("POPUP: Error in click handler:", err);
-            showError(`POPUP: An error occurred: ${err.message}`);
+            showError(`POPUP: Client-side error: ${err.message}`);
         } finally {
             loadingDiv.style.display = 'none';
             resetButton();
@@ -55,22 +85,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function showError(message) {
-        console.log("POPUP: Displaying error - ", message)
+        console.log("POPUP: Displaying error - ", message);
         errorDiv.textContent = message;
         errorDiv.style.display = 'block';
     }
 
     function resetButton() {
-        loadYearsBtn.disabled = false;
+        loadDataBtn.disabled = false;
     }
 
-    function displayYears(years) {
-        console.log("POPUP: Displaying years:", years);
-        years.forEach(year => {
+    function displayList(items, listElement, itemTypeLabel) {
+        listElement.innerHTML = ''; // Clear previous
+        items.forEach(item => {
             const listItem = document.createElement('li');
-            listItem.textContent = `${year.text} (Value: ${year.value})`;
-            yearsList.appendChild(listItem);
+            listItem.textContent = `${item.text} (Value: ${item.value})`;
+            listElement.appendChild(listItem);
         });
-        yearsContainer.style.display = 'block';
     }
 });

@@ -2,12 +2,10 @@
 console.log("OFFSCREEN: Script loaded. DOMParser type:", typeof DOMParser);
 
 chrome.runtime.onMessage.addListener(async (request) => {
-    if (request.target !== 'offscreen_document') { // Ensure message is for offscreen
-        // console.log("OFFSCREEN: Message not for offscreen, ignoring.", request);
-        return false; // Indicate that we are not handling this message asynchronously
+    if (request.target !== 'offscreen_document') {
+        return false;
     }
-
-    console.log("OFFSCREEN: Message received", request.action, "Task:", request.task);
+    console.log("OFFSCREEN: Message received", request.action, "Task:", request.task, "Req ID:", request.originalRequestId);
 
     if (request.action === 'parseHTMLTask') {
         const { htmlString, task, originalRequestId } = request;
@@ -15,28 +13,32 @@ chrome.runtime.onMessage.addListener(async (request) => {
             action: 'parseHTMLResult',
             source: 'offscreen_document',
             originalRequestId: originalRequestId,
-            success: false, // Default to false
-            data: null,
-            error: null
+            success: false, data: null, error: null
         };
 
         try {
-            if (typeof DOMParser === 'undefined') {
-                console.error("OFFSCREEN: DOMParser is UNDEFINED even in offscreen document!");
-                throw new Error("DOMParser is critically unavailable in the offscreen document context.");
-            }
+            if (typeof DOMParser === 'undefined') throw new Error("DOMParser unavailable in offscreen.");
             const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlString, "text/html");
-            console.log("OFFSCREEN: HTML parsed successfully with DOMParser.");
+            // For semesters, the htmlString might just be options, not a full document or select tag
+            // So, we might need to wrap it to parse it correctly if it's just option tags.
+            let effectiveHtmlString = htmlString;
+            if (task === 'extractSemesters' && !htmlString.trim().toLowerCase().startsWith('<select')) {
+                // If it doesn't look like a select element, wrap it so querySelectorAll works on options
+                effectiveHtmlString = `<select>${htmlString}</select>`;
+                console.log("OFFSCREEN (extractSemesters): Wrapped HTML string for parsing options.");
+            }
+
+            const doc = parser.parseFromString(effectiveHtmlString, "text/html");
+            console.log("OFFSCREEN: HTML parsed for task:", task);
 
             if (task === 'extractYears') {
-                const yearOptionsElements = doc.querySelectorAll('#eduYear option');
+                const yearOptionsElements = doc.querySelectorAll('#eduYear option'); // From full page
                 let years = [];
                 if (yearOptionsElements && yearOptionsElements.length > 0) {
                     years = Array.from(yearOptionsElements)
-                        .filter(opt => opt.value && opt.value.trim() !== "") // Ensure value exists
+                        .filter(opt => opt.value && opt.value.trim() !== "")
                         .map(opt => ({ value: opt.value, text: opt.textContent.trim() }))
-                        .sort((a, b) => { // Sort numerically by the year part of the text, newer first
+                        .sort((a, b) => {
                             const yearA = parseInt(a.text.split(' - ')[0]);
                             const yearB = parseInt(b.text.split(' - ')[0]);
                             return yearB - yearA;
@@ -44,28 +46,40 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 }
                 responsePayload.data = years;
                 responsePayload.success = true;
-                console.log("OFFSCREEN: Years extracted:", years.length);
             } else if (task === 'extractEvaluationLinkHref') {
-                const evalLinkElement = doc.querySelector('.sidebar-menu a[href*="/studentEvaluation"]');
-                if (!evalLinkElement) {
-                    throw new Error("OFFSCREEN: Could not find 'Elektron Jurnal' link in the provided HTML.");
-                }
-                responsePayload.data = evalLinkElement.getAttribute('href'); // Send back the raw href
+                const evalLinkElement = doc.querySelector('.sidebar-menu a[href*="/studentEvaluation"]'); // From full page
+                if (!evalLinkElement) throw new Error("OFFSCREEN: Could not find 'Elektron Jurnal' link.");
+                responsePayload.data = evalLinkElement.getAttribute('href');
                 responsePayload.success = true;
-                console.log("OFFSCREEN: Evaluation link href extracted:", responsePayload.data);
+            } else if (task === 'extractSemesters') {
+                // Now querySelectorAll should work on the potentially wrapped 'select' or the original if it was a select
+                const semesterOptionsElements = doc.querySelectorAll('option'); // Target options directly
+                let semesters = [];
+                if (semesterOptionsElements && semesterOptionsElements.length > 0) {
+                    semesters = Array.from(semesterOptionsElements)
+                        .filter(opt => opt.value && opt.value.trim() !== "")
+                        .map(opt => ({ value: opt.value, text: opt.textContent.trim() }));
+                    console.log(`OFFSCREEN (extractSemesters): Found ${semesterOptionsElements.length} options, mapped to ${semesters.length} semesters.`);
+                } else {
+                    console.warn("OFFSCREEN (extractSemesters): No 'option' elements found in the provided HTML string for semesters:", htmlString.substring(0,200));
+                }
+                responsePayload.data = semesters;
+                responsePayload.success = true;
+            } else if (task === 'extractSubjects') {
+                const subjectRows = doc.querySelectorAll('#studentEvaluation-grid tbody tr:not(.empty)'); // From full page
+                let subjects = [];
+                 if (subjectRows && subjectRows.length > 0) {
+                    subjectRows.forEach(row => { /* ... subject extraction ... */ });
+                }
+                responsePayload.data = subjects; responsePayload.success = true;
             } else {
-                console.warn("OFFSCREEN: Unknown task:", task);
-                throw new Error(`Unknown parsing task received: ${task}`);
+                throw new Error(`Unknown parsing task: ${task}`);
             }
         } catch (e) {
-            console.error("OFFSCREEN: Error during parsing task:", task, e);
+            console.error("OFFSCREEN: Error in task:", task, e);
             responsePayload.error = e.message;
-            responsePayload.success = false;
         }
         chrome.runtime.sendMessage(responsePayload);
     }
-    // Return true if you intend to use sendResponse asynchronously,
-    // but here sendMessage is called synchronously within the handler block.
-    // However, to be safe with potential async operations inside try/catch, let's return true.
     return true;
 });

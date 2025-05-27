@@ -1,20 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>UNEC - Academic Years</title>
+    <title>UNEC - Academic Data</title>
     <meta charset="UTF-8">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Academic Years</h1>
-        <button id="loadYearsBtn">Load Academic Years</button>
+        <h1>UNEC Data</h1>
+        <button id="loadDataBtn">Load Year & Semesters</button> <!-- Changed button text -->
         <div id="loading" style="display:none;">Loading...</div>
         <div id="error" style="display:none; color: red;"></div>
-        <div id="years-container" style="display:none;">
-            <h2>Available Academic Years:</h2>
-            <ul id="yearsList"></ul>
+
+        <div id="selected-year-container" style="display:none;">
+            <h2>Selected Academic Year:</h2>
+            <p id="selectedYearText"></p>
         </div>
+
+        <div id="semesters-container" style="display:none;">
+            <h2>Available Semesters (for selected year):</h2>
+            <ul id="semestersList"></ul>
+        </div>
+
+        <!-- Optional: For reference, to show all years if needed -->
+        <!-- <div id="all-years-container" style="display:none;">
+            <h3>All Available Academic Years:</h3>
+            <ul id="allYearsList"></ul>
+        </div> -->
+
     </div>
     <script src="popup.js"></script>
 </body>

@@ -1,6 +1,6 @@
 body {
     font-family: Arial, sans-serif;
-    width: 350px;
+    width: 380px; /* Adjusted width */
     padding: 15px;
     box-sizing: border-box;
 }
@@ -20,16 +20,21 @@ button {
     color: red;
     border: 1px solid red;
 }
-#years-container {
+#selected-year-container, #semesters-container, #all-years-container { /* Added all-years */
     margin-top: 15px;
     text-align: left;
     border: 1px solid #ccc;
     padding: 10px;
 }
-#yearsList {
+#semestersList, #allYearsList { /* Added allYearsList */
     list-style-type: none;
     padding-left: 0;
+    max-height: 150px;
+    overflow-y: auto;
 }
-#yearsList li {
+#semestersList li, #allYearsList li { /* Added allYearsList li */
     padding: 3px 0;
+}
+h2, h3 {
+    margin-top: 0;
 }
