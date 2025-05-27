@@ -78,38 +78,45 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 responsePayload.data = subjects;
                 responsePayload.success = true;
                 console.log("OFFSCREEN: Subjects extracted count:", subjects.length, "Example subject:", subjects[0]);
-            } else if (task === 'extractAttendancePercentage') {
+            } else if (task === 'extractEvaluationDetails') { // Renamed from extractAttendancePercentage
                 let attendancePercentage = null;
+                let currentEvaluation = null;
                 const finalEvalTable = doc.querySelector('#finalEval table');
 
                 if (finalEvalTable) {
-                    // Check if the "Qaib faizi" header exists
-                    const allHeaders = finalEvalTable.querySelectorAll('thead th');
-                    const qaibHeaderExists = Array.from(allHeaders).some(th => th.textContent.trim() === "Qaib faizi");
+                    const headers = Array.from(finalEvalTable.querySelectorAll('thead th'));
+                    const cariQHeaderExists = headers.some(th => th.textContent.trim() === "Cari qiymətləndirmə");
+                    const qaibHeaderExists = headers.some(th => th.textContent.trim() === "Qaib faizi");
 
-                    if (qaibHeaderExists) {
+                    if (cariQHeaderExists && qaibHeaderExists) {
                         const dataRows = finalEvalTable.querySelectorAll('tbody tr');
-                        if (dataRows.length > 0) { // Use the first data row
-                            const cellsInFirstDataRow = dataRows[0].querySelectorAll('td');
-                            if (cellsInFirstDataRow.length > 0) {
-                                // Assuming "Qaib faizi" is the value in the last cell of the data row
-                                attendancePercentage = cellsInFirstDataRow[cellsInFirstDataRow.length - 1].textContent.trim();
+                        if (dataRows.length > 0) {
+                            const cells = dataRows[0].querySelectorAll('td');
+                            if (cells.length >= 15) { // Need at least 15 cells for "Qaib faizi" at index 14
+                                currentEvaluation = cells[9]?.textContent?.trim() || null; // 10th cell, index 9
+                                attendancePercentage = cells[14]?.textContent?.trim() || null; // 15th cell, index 14
+                            } else if (cells.length >= 10) { // Fallback if less than 15 but at least 10
+                                currentEvaluation = cells[9]?.textContent?.trim() || null;
+                                console.warn("OFFSCREEN: Not enough cells for 'Qaib faizi' (expected 15, got " + cells.length + "). 'Cari qiymətləndirmə' might be available.");
                             } else {
-                                console.warn("OFFSCREEN: No cells found in the first data row of #finalEval table for attendance.");
+                                console.warn("OFFSCREEN: Not enough cells in data row for evaluation details. Cells found:", cells.length);
                             }
                         } else {
-                            console.warn("OFFSCREEN: No data rows found in #finalEval table for attendance.");
+                            console.warn("OFFSCREEN: No data rows found in #finalEval table.");
                         }
                     } else {
-                        console.warn("OFFSCREEN: 'Qaib faizi' header not found in #finalEval table.");
+                        console.warn("OFFSCREEN: Required headers ('Cari qiymətləndirmə' or 'Qaib faizi') not found in #finalEval table.");
                     }
                 } else {
-                    console.warn("OFFSCREEN: #finalEval table not found for attendance extraction.");
+                    console.warn("OFFSCREEN: #finalEval table not found for evaluation details extraction.");
                 }
                 
-                responsePayload.data = attendancePercentage;
+                responsePayload.data = {
+                    attendancePercentage: attendancePercentage,
+                    currentEvaluation: currentEvaluation
+                };
                 responsePayload.success = true;
-                console.log("OFFSCREEN: Attendance percentage extracted:", attendancePercentage);
+                console.log("OFFSCREEN: Evaluation details extracted:", responsePayload.data);
             } else {
                 throw new Error(`Unknown parsing task: ${task}`);
             }

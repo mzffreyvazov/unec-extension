@@ -101,15 +101,16 @@ async function fetchSubjectEvaluationData(subjectId, eduFormId) { // Added eduFo
         const popupHtml = await response.text();
         if (!popupHtml) throw new Error("Empty response from studentEvaluationPopup POST");
         
-        // Extract attendance percentage from the popup HTML
-        const attendancePercentage = await parseHTMLViaOffscreen(popupHtml, 'extractAttendancePercentage');
+        // Extract evaluation details from the popup HTML
+        const evaluationDetails = await parseHTMLViaOffscreen(popupHtml, 'extractEvaluationDetails'); // Changed task name
         return { 
             success: true, 
-            attendancePercentage: attendancePercentage || "N/A"
+            details: evaluationDetails // Return the whole object from offscreen
         };
     } catch (error) {
         console.error(`BG: Error fetching evaluation data for subject ${subjectId}:`, error);
-        return { success: false, error: error.message };
+        // Ensure the error object has the 'details' structure expected by popup.js
+        return { success: false, error: error.message, details: { attendancePercentage: null, currentEvaluation: null } };
     }
 }
 
@@ -239,7 +240,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 for (const subject of request.subjects) {
                     if (!subject.id || !subject.eduFormId) {
                         console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
-                        results[subject.id || `unknown-${Math.random()}`] = { success: false, error: "Missing subject id or eduFormId", attendancePercentage: "N/A" };
+                        results[subject.id || `unknown-${Math.random()}`] = { 
+                            success: false, 
+                            error: "Missing subject id or eduFormId", 
+                            details: { attendancePercentage: null, currentEvaluation: null } // Match structure
+                        };
                         continue;
                     }
                     console.log(`BG: Fetching evaluation for subject: ${subject.name} (ID: ${subject.id}, eduFormId: ${subject.eduFormId})`);

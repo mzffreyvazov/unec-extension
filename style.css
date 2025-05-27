@@ -55,27 +55,65 @@ h2, h3 {
 .attendance-value {
     font-weight: bold;
     color: #1b5e20;
+    /* margin-left: 10px; Removed, will be handled by container */
 }
 
 .attendance-value.high {
     color: #d32f2f;
 }
 
-.attendance-loading {
+.attendance-value.error, .current-evaluation-value.error {
+    color: #b71c1c; /* Darker red for errors */
+    font-style: italic;
+}
+
+.details-loading { /* Renamed from attendance-loading */
     color: #888;
     font-style: italic;
+    /* margin-left: 10px; Removed */
+    text-align: right; /* Align loading text to the right */
+    width: 100%; /* Ensure it takes full width of its container */
 }
 
 .subject-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 5px;
+    align-items: center; /* Vertically align items in the center */
+    margin-bottom: 8px; /* Increased margin */
+    padding: 8px 5px; /* Increased padding */
+    border-bottom: 1px solid #eee; /* Separator */
+}
+
+.subject-item:last-child {
+    border-bottom: none;
 }
 
 .subject-name {
     flex-grow: 1;
+    margin-right: 10px; /* Space before details */
+    line-height: 1.3; /* Improve readability if name wraps */
 }
+
+.subject-details-container {
+    display: flex; 
+    flex-direction: column; 
+    align-items: flex-end; /* Align text to the right */
+    font-size: 0.9em;
+    min-width: 100px; /* Give it some minimum width to prevent squishing */
+    text-align: right; /* Ensure text inside is right-aligned */
+}
+
+.current-evaluation-value {
+    font-weight: normal; 
+    color: #333;
+    margin-bottom: 3px; /* Space between Cari Q and Qaib */
+}
+
+/* Ensure .attendance-value also has a clear class for non-error, non-high states if needed */
+.attendance-value:not(.high):not(.error) {
+    color: #1b5e20; /* Default green for good standing */
+}
+
 
 #attendanceLoading {
     margin: 10px 0;

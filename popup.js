@@ -115,17 +115,12 @@ document.addEventListener('DOMContentLoaded', () => {
         errorDiv.style.display = 'none';
         
         try {
-            // Update UI to show loading state for each subject
             currentSubjects.forEach(subject => {
                 const subjectElement = document.getElementById(`subject-${subject.id}`);
                 if (subjectElement) {
-                    const attendanceSpan = subjectElement.querySelector('.attendance-value') || 
-                                          document.createElement('span');
-                    attendanceSpan.className = 'attendance-loading';
-                    attendanceSpan.textContent = 'Loading...';
-                    
-                    if (!subjectElement.querySelector('.attendance-value')) {
-                        subjectElement.appendChild(attendanceSpan);
+                    const detailsContainer = subjectElement.querySelector('.subject-details-container');
+                    if (detailsContainer) {
+                        detailsContainer.innerHTML = `<span class="details-loading">Loading...</span>`; // Simplified loading text
                     }
                 }
             });
@@ -136,37 +131,59 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             if (response.success && response.data) {
-                // Update UI with attendance data
                 Object.keys(response.data).forEach(subjectId => {
                     const result = response.data[subjectId];
                     const subjectElement = document.getElementById(`subject-${subjectId}`);
                     
                     if (subjectElement) {
-                        const attendanceSpan = subjectElement.querySelector('.attendance-loading') || 
-                                              subjectElement.querySelector('.attendance-value') ||
-                                              document.createElement('span');
+                        const detailsContainer = subjectElement.querySelector('.subject-details-container');
+                        if (!detailsContainer) { 
+                            console.error("Details container not found for subject", subjectId);
+                            return;
+                        }
+                        detailsContainer.innerHTML = ''; // Clear loading or previous content
+
+                        const currentEvalSpan = document.createElement('span');
+                        currentEvalSpan.className = 'current-evaluation-value';
                         
-                        if (result.success) {
-                            const attendance = result.attendancePercentage;
-                            attendanceSpan.textContent = `${attendance}%`;
-                            attendanceSpan.className = 'attendance-value';
+                        const attendanceSpan = document.createElement('span');
+                        attendanceSpan.className = 'attendance-value';
+                        
+                        if (result.success && result.details) {
+                            const { attendancePercentage, currentEvaluation } = result.details;
                             
-                            // Highlight high absence rate
-                            if (parseInt(attendance) > 15) {
+                            currentEvalSpan.textContent = `Cari Q: ${currentEvaluation !== null ? currentEvaluation : 'N/A'}`;
+                            if (currentEvaluation === null) {
+                                currentEvalSpan.classList.add('error');
+                            }
+                            
+                            attendanceSpan.textContent = `Qaib: ${attendancePercentage !== null ? attendancePercentage + '%' : 'N/A'}`;
+                            if (attendancePercentage !== null && parseInt(attendancePercentage) > 15) {
                                 attendanceSpan.classList.add('high');
+                            } else if (attendancePercentage === null) {
+                                attendanceSpan.classList.add('error');
                             }
                         } else {
-                            attendanceSpan.textContent = 'Error';
-                            attendanceSpan.className = 'attendance-value error';
+                            currentEvalSpan.textContent = 'Cari Q: Error';
+                            currentEvalSpan.classList.add('error');
+                            attendanceSpan.textContent = 'Qaib: Error';
+                            attendanceSpan.classList.add('error');
+                            if (result.error) console.warn(`POPUP: Error for subject ${subjectId}: ${result.error}`);
                         }
-                        
-                        if (!subjectElement.querySelector('.attendance-value')) {
-                            subjectElement.appendChild(attendanceSpan);
-                        }
+                        detailsContainer.appendChild(currentEvalSpan); 
+                        detailsContainer.appendChild(attendanceSpan);
                     }
                 });
             } else {
-                showError(response.error || "Failed to fetch attendance data");
+                showError(response.error || "Failed to fetch all subjects' evaluation data");
+                // Clear loading indicators from all if main fetch failed
+                currentSubjects.forEach(subject => {
+                    const subjectElement = document.getElementById(`subject-${subject.id}`);
+                    if (subjectElement) {
+                        const detailsContainer = subjectElement.querySelector('.subject-details-container');
+                        if (detailsContainer) detailsContainer.innerHTML = '<span class="error">Failed to load</span>';
+                    }
+                });
             }
         } catch (error) {
             console.error("Error fetching attendance data:", error);
@@ -191,10 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         listElement.innerHTML = '';
         
         if (itemTypeLabel === "subject") {
-            // Store the subjects for attendance fetching
             currentSubjects = items;
-            
-            // Show fetch attendance button if subjects are available
             fetchAttendanceBtn.style.display = items.length > 0 ? 'block' : 'none';
             
             items.forEach(item => {
@@ -205,8 +219,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'subject-name';
                 nameSpan.textContent = `${item.name} (ID: ${item.id})`;
-                
                 listItem.appendChild(nameSpan);
+
+                const detailsContainer = document.createElement('div');
+                detailsContainer.className = 'subject-details-container';
+                // Details will be populated on "Fetch Attendance Data" button click
+                listItem.appendChild(detailsContainer);
+                
                 listElement.appendChild(listItem);
             });
         } else { // for years and semesters
