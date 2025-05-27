@@ -7,8 +7,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>UNEC Data</h1>
-        <button id="loadDataBtn">Load Year & Semesters</button> <!-- Changed button text -->
+        <h1>UNEC Data Viewer</h1>
+        <button id="loadDataBtn">Load Data (Years, Semesters, Subjects)</button>
         <div id="loading" style="display:none;">Loading...</div>
         <div id="error" style="display:none; color: red;"></div>
 
@@ -18,15 +18,16 @@
         </div>
 
         <div id="semesters-container" style="display:none;">
-            <h2>Available Semesters (for selected year):</h2>
+            <h2>Selected Semester:</h2>
+            <p id="selectedSemesterText"></p>
+            <h3>Available Semesters (for selected year):</h3>
             <ul id="semestersList"></ul>
         </div>
 
-        <!-- Optional: For reference, to show all years if needed -->
-        <!-- <div id="all-years-container" style="display:none;">
-            <h3>All Available Academic Years:</h3>
-            <ul id="allYearsList"></ul>
-        </div> -->
+        <div id="subjects-container" style="display:none;">
+            <h2>Subjects (for selected year/semester):</h2>
+            <ul id="subjectsList"></ul>
+        </div>
 
     </div>
     <script src="popup.js"></script>

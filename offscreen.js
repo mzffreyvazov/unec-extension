@@ -1,4 +1,5 @@
 // offscreen.js
+// (Should be the same as message #17 - ensure 'extractSubjects' case is present and correct)
 console.log("OFFSCREEN: Script loaded. DOMParser type:", typeof DOMParser);
 
 chrome.runtime.onMessage.addListener(async (request) => {
@@ -19,59 +20,57 @@ chrome.runtime.onMessage.addListener(async (request) => {
         try {
             if (typeof DOMParser === 'undefined') throw new Error("DOMParser unavailable in offscreen.");
             const parser = new DOMParser();
-            // For semesters, the htmlString might just be options, not a full document or select tag
-            // So, we might need to wrap it to parse it correctly if it's just option tags.
             let effectiveHtmlString = htmlString;
             if (task === 'extractSemesters' && !htmlString.trim().toLowerCase().startsWith('<select')) {
-                // If it doesn't look like a select element, wrap it so querySelectorAll works on options
                 effectiveHtmlString = `<select>${htmlString}</select>`;
-                console.log("OFFSCREEN (extractSemesters): Wrapped HTML string for parsing options.");
             }
-
             const doc = parser.parseFromString(effectiveHtmlString, "text/html");
             console.log("OFFSCREEN: HTML parsed for task:", task);
 
-            if (task === 'extractYears') {
-                const yearOptionsElements = doc.querySelectorAll('#eduYear option'); // From full page
+            if (task === 'extractYears') { /* ... years logic ... */
+                const yearOptionsElements = doc.querySelectorAll('#eduYear option');
                 let years = [];
                 if (yearOptionsElements && yearOptionsElements.length > 0) {
                     years = Array.from(yearOptionsElements)
                         .filter(opt => opt.value && opt.value.trim() !== "")
                         .map(opt => ({ value: opt.value, text: opt.textContent.trim() }))
-                        .sort((a, b) => {
-                            const yearA = parseInt(a.text.split(' - ')[0]);
-                            const yearB = parseInt(b.text.split(' - ')[0]);
-                            return yearB - yearA;
-                        });
+                        .sort((a, b) => { const yA = parseInt(a.text.split(' - ')[0]), yB = parseInt(b.text.split(' - ')[0]); return yB - yA; });
                 }
-                responsePayload.data = years;
-                responsePayload.success = true;
-            } else if (task === 'extractEvaluationLinkHref') {
-                const evalLinkElement = doc.querySelector('.sidebar-menu a[href*="/studentEvaluation"]'); // From full page
+                responsePayload.data = years; responsePayload.success = true;
+            } else if (task === 'extractEvaluationLinkHref') { /* ... link logic ... */
+                const evalLinkElement = doc.querySelector('.sidebar-menu a[href*="/studentEvaluation"]');
                 if (!evalLinkElement) throw new Error("OFFSCREEN: Could not find 'Elektron Jurnal' link.");
-                responsePayload.data = evalLinkElement.getAttribute('href');
-                responsePayload.success = true;
-            } else if (task === 'extractSemesters') {
-                // Now querySelectorAll should work on the potentially wrapped 'select' or the original if it was a select
-                const semesterOptionsElements = doc.querySelectorAll('option'); // Target options directly
+                responsePayload.data = evalLinkElement.getAttribute('href'); responsePayload.success = true;
+            } else if (task === 'extractSemesters') { /* ... semesters logic from message #17 ... */
+                const semesterOptionsElements = doc.querySelectorAll('option'); // In wrapped or original select
                 let semesters = [];
                 if (semesterOptionsElements && semesterOptionsElements.length > 0) {
                     semesters = Array.from(semesterOptionsElements)
                         .filter(opt => opt.value && opt.value.trim() !== "")
                         .map(opt => ({ value: opt.value, text: opt.textContent.trim() }));
-                    console.log(`OFFSCREEN (extractSemesters): Found ${semesterOptionsElements.length} options, mapped to ${semesters.length} semesters.`);
-                } else {
-                    console.warn("OFFSCREEN (extractSemesters): No 'option' elements found in the provided HTML string for semesters:", htmlString.substring(0,200));
                 }
-                responsePayload.data = semesters;
-                responsePayload.success = true;
+                responsePayload.data = semesters; responsePayload.success = true;
+                console.log("OFFSCREEN: Semesters extracted count:", semesters.length);
             } else if (task === 'extractSubjects') {
-                const subjectRows = doc.querySelectorAll('#studentEvaluation-grid tbody tr:not(.empty)'); // From full page
+                const subjectRows = doc.querySelectorAll('#studentEvaluation-grid tbody tr:not(.empty)');
                 let subjects = [];
-                 if (subjectRows && subjectRows.length > 0) {
-                    subjectRows.forEach(row => { /* ... subject extraction ... */ });
+                if (subjectRows && subjectRows.length > 0) {
+                    subjectRows.forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 3) { // Original HTML shows №, hidden ID, Name, Credit, Group
+                            const idCell = cells[1];    // Hidden ID
+                            const nameCell = cells[2];  // Subject Name
+                            const subjectId = idCell?.textContent?.trim();
+                            const subjectName = nameCell?.textContent?.trim();
+                            if (subjectId && subjectName) {
+                                subjects.push({ id: subjectId, name: subjectName });
+                            }
+                        }
+                    });
                 }
-                responsePayload.data = subjects; responsePayload.success = true;
+                responsePayload.data = subjects;
+                responsePayload.success = true;
+                console.log("OFFSCREEN: Subjects extracted count:", subjects.length);
             } else {
                 throw new Error(`Unknown parsing task: ${task}`);
             }

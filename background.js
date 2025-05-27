@@ -1,11 +1,11 @@
 // background.js
-console.log("BG: Script loaded (POST for Semesters Version).");
+console.log("BG: Script loaded (Subjects Test Version).");
 
 const BASE_AZ_URL = "https://kabinet.unec.edu.az/az/";
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 let creatingOffscreenPromise = null;
 
-// --- Offscreen Document Management & parseHTMLViaOffscreen (Keep same as before) ---
+// --- Offscreen Document Management & parseHTMLViaOffscreen (Keep same as message #17) ---
 async function hasOffscreenDocument() { /* ... same ... */
     const contexts = await chrome.runtime.getContexts({contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT], documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]});
     return contexts.length > 0;
@@ -18,7 +18,7 @@ async function setupOffscreenDocument() { /* ... same ... */
     .finally(() => { creatingOffscreenPromise = null; });
     return creatingOffscreenPromise;
 }
-async function parseHTMLViaOffscreen(htmlString, task) { /* ... same, ensure logging is good ... */
+async function parseHTMLViaOffscreen(htmlString, task) { /* ... same (ensure logging and timeout are robust) ... */
     const setupSuccess = await setupOffscreenDocument();
     if (!setupSuccess && !(await hasOffscreenDocument())) throw new Error("Offscreen doc unavailable.");
     return new Promise((resolve, reject) => {
@@ -33,64 +33,33 @@ async function parseHTMLViaOffscreen(htmlString, task) { /* ... same, ensure log
     });
 }
 
-// --- Core Logic Functions (using offscreen parsing) ---
-async function getStudentEvalUrlFromNotePageHTML(pageHtml) {
+// --- Core Logic Functions ---
+async function getStudentEvalUrlFromNotePageHTML(pageHtml) { /* ... same ... */
     if (!pageHtml) throw new Error("BG: HTML for note/announce page is empty.");
     const href = await parseHTMLViaOffscreen(pageHtml, 'extractEvaluationLinkHref');
-    if (!href || typeof href !== 'string') throw new Error("BG: Invalid href for eval link from offscreen.");
+    if (!href || typeof href !== 'string') throw new Error("BG: Invalid href for eval link.");
     return new URL(href, BASE_AZ_URL).href;
 }
-
-async function extractYearsFromEvalPageHTML(pageHtml) {
+async function extractYearsFromEvalPageHTML(pageHtml) { /* ... same ... */
     if (!pageHtml) throw new Error("BG: HTML for year extraction is empty.");
     const years = await parseHTMLViaOffscreen(pageHtml, 'extractYears');
-    if (!Array.isArray(years)) throw new Error("BG: Invalid data for years from offscreen.");
+    if (!Array.isArray(years)) throw new Error("BG: Invalid data for years.");
     return years;
 }
-
-// ***** NEW FUNCTION TO FETCH SEMESTERS VIA POST *****
-async function fetchSemestersForYearPOST(yearId, csrfToken) { // Added csrfToken parameter
+async function fetchSemestersForYearPOST(yearId, csrfToken) { /* ... same from message #17 ... */
     const semesterUrl = new URL('getEduSemester', BASE_AZ_URL).href;
-    console.log(`BG: Fetching semesters via POST from: ${semesterUrl} for year ID: ${yearId}`);
-
-    const formData = new URLSearchParams();
-    formData.append('type', 'eduYear');
-    formData.append('id', yearId);
-
-    // Add CSRF token if available and needed
-    // The website's own POST request might include a YII_CSRF_TOKEN or similar.
-    // We need to find out how to get this token. For now, we'll try without.
-    // if (csrfToken) {
-    //     formData.append('YII_CSRF_TOKEN', csrfToken); // Or whatever the token name is
-    // }
-
-    const requestOptions = {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest' // Often required by Yii
-        },
-        body: formData.toString()
-    };
-
-    const response = await fetch(semesterUrl, requestOptions);
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`BG: Failed to fetch semesters via POST. Status: ${response.status}. Body: ${errorText.substring(0,500)}`);
-        throw new Error(`Failed to fetch semesters: ${response.status} ${response.statusText}`);
-    }
-    const semesterHtmlResponse = await response.text(); // This is likely the <option>...</option> HTML
-    if (!semesterHtmlResponse) throw new Error("Empty response from getEduSemester POST request.");
-    console.log("BG: Raw HTML response from getEduSemester POST:", semesterHtmlResponse.substring(0, 500) + "...");
-
-    // Now parse this HTML snippet (which should be just options)
-    const semesters = await parseHTMLViaOffscreen(semesterHtmlResponse, 'extractSemesters');
-    if (!Array.isArray(semesters)) throw new Error("BG: Semesters from POST not parsed into an array.");
-    return semesters;
+    console.log(`BG: POST to ${semesterUrl} for year ID: ${yearId}`);
+    const formData = new URLSearchParams(); formData.append('type', 'eduYear'); formData.append('id', yearId);
+    // if (csrfToken) formData.append('YII_CSRF_TOKEN', csrfToken); // TODO: Handle CSRF if needed
+    const reqOpts = { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest'}, body: formData.toString()};
+    const response = await fetch(semesterUrl, reqOpts);
+    if (!response.ok) throw new Error(`Failed POST to get semesters: ${response.status} ${response.statusText}`);
+    const semesterHtmlResp = await response.text();
+    if (!semesterHtmlResp) throw new Error("Empty resp from getEduSemester POST.");
+    console.log("BG: Raw HTML from getEduSemester POST (first 300):", semesterHtmlResp.substring(0,300));
+    return await parseHTMLViaOffscreen(semesterHtmlResp, 'extractSemesters');
 }
-
-
-async function extractSubjectsFromEvalPageHTML(pageHtml) { // New function for clarity
+async function extractSubjectsFromEvalPageHTML(pageHtml) { // Keep this name
     console.log("BG: extractSubjectsFromEvalPageHTML called.");
     if (!pageHtml) throw new Error("BG: HTML for subject extraction is empty.");
     const subjects = await parseHTMLViaOffscreen(pageHtml, 'extractSubjects');
@@ -98,74 +67,102 @@ async function extractSubjectsFromEvalPageHTML(pageHtml) { // New function for c
     return subjects;
 }
 
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "fetchYearsAndSemesters") {
+    if (request.action === "fetchFullAcademicData") { // Renamed action for clarity
         (async () => {
-            console.log("BG: 'fetchYearsAndSemesters' action started. Tab ID:", request.tabId);
-            let studentEvaluationPageUrl; // Base URL for studentEvaluation
+            console.log("BG: 'fetchFullAcademicData' action started. Tab ID:", request.tabId);
+            let studentEvaluationPageUrl;
             let initialHtmlForYears;
-            // We no longer fetch a full page for semesters, but use a POST request
-            // let htmlWithSemesters;
-            let selectedYear = null;
-            let allYears = [];
-            let semestersForSelectedYear = [];
-            // Placeholder for CSRF token - we need to figure out how to get this
-            let csrfToken = null;
+            let htmlWithSubjects; // This will be like html_content3
+
+            let selectedYear = null, allYears = [];
+            let selectedSemester = null, semestersForSelectedYear = [];
+            let subjectsForSelectedSemester = [];
+            let csrfToken = null; // Placeholder
 
             try {
                 if (!request.tabId) throw new Error("Tab ID missing.");
                 const currentTab = await chrome.tabs.get(request.tabId);
-                if (!currentTab || !currentTab.url) throw new Error("Could not get current tab info.");
+                if (!currentTab || !currentTab.url) throw new Error("Could not get tab info.");
 
+                // 1. Get Initial Page HTML (for Years and potential CSRF)
                 const noteAndAnnounceUrl = new URL('noteandannounce', BASE_AZ_URL).href;
                 const studentEvalDirectUrl = new URL('studentEvaluation', BASE_AZ_URL).href;
-
-                // 1. Determine Student Evaluation Base URL & Get Initial HTML (for years and potentially CSRF)
                 if (currentTab.url.startsWith(noteAndAnnounceUrl)) {
                     const noteResponse = await fetch(currentTab.url);
-                    if (!noteResponse.ok) throw new Error(`Fetch failed for ${currentTab.url}`);
+                    if(!noteResponse.ok) throw new Error("Failed note fetch");
                     const noteHtml = await noteResponse.text();
                     studentEvaluationPageUrl = await getStudentEvalUrlFromNotePageHTML(noteHtml);
                     const initialEvalResponse = await fetch(studentEvaluationPageUrl);
-                    if (!initialEvalResponse.ok) throw new Error(`Fetch failed for ${studentEvaluationPageUrl}`);
+                    if(!initialEvalResponse.ok) throw new Error("Failed initial eval fetch");
                     initialHtmlForYears = await initialEvalResponse.text();
                 } else if (currentTab.url.startsWith(studentEvalDirectUrl)) {
                     studentEvaluationPageUrl = currentTab.url.split('?')[0];
                     const initialEvalResponse = await fetch(studentEvaluationPageUrl);
-                    if (!initialEvalResponse.ok) throw new Error(`Fetch failed for ${studentEvaluationPageUrl}`);
+                    if(!initialEvalResponse.ok) throw new Error("Failed direct eval fetch");
                     initialHtmlForYears = await initialEvalResponse.text();
                 } else {
                     studentEvaluationPageUrl = new URL('studentEvaluation', BASE_AZ_URL).href;
                     const initialEvalResponse = await fetch(studentEvaluationPageUrl);
-                    if (!initialEvalResponse.ok) throw new Error(`Fetch failed for default ${studentEvaluationPageUrl}`);
+                    if(!initialEvalResponse.ok) throw new Error("Failed default eval fetch");
                     initialHtmlForYears = await initialEvalResponse.text();
                 }
                 if (!initialHtmlForYears) throw new Error("HTML for year parsing is empty.");
-                console.log("BG: Student Evaluation URL for operations:", studentEvaluationPageUrl);
+                console.log("BG: Student Eval URL for operations:", studentEvaluationPageUrl);
+                // TODO: Extract CSRF from initialHtmlForYears if needed
 
-                // TODO: Extract CSRF token from initialHtmlForYears if present and needed for POST
-                // For now, csrfToken remains null. If POST fails, this is the first place to look.
-                // Example: const docForCsrf = await parseHTMLViaOffscreen(initialHtmlForYears, 'extractCsrf');
-                // (Need to define 'extractCsrf' task in offscreen.js)
-
-                // 2. Extract Academic Years
+                // 2. Extract Years, Select Latest
                 allYears = await extractYearsFromEvalPageHTML(initialHtmlForYears);
                 if (!allYears || allYears.length === 0) throw new Error("No academic years extracted.");
-                selectedYear = allYears[0]; // Select the latest year
-                console.log(`BG: Latest year selected: ${selectedYear.text} (ID: ${selectedYear.value})`);
+                selectedYear = allYears[0]; // Assuming sorted: latest is first
+                console.log(`BG: Selected Year: ${selectedYear.text} (ID: ${selectedYear.value})`);
 
-                // 3. Fetch Semesters for the selected year using the NEW POST request method
+                // 3. Fetch Semesters for Selected Year (via POST)
                 semestersForSelectedYear = await fetchSemestersForYearPOST(selectedYear.value, csrfToken);
-                console.log(`BG: Semesters via POST for ${selectedYear.text}:`, semestersForSelectedYear.length);
-                if (semestersForSelectedYear.length === 0) {
-                    console.warn(`BG: No semesters found via POST for year ${selectedYear.text}. The response from /getEduSemester might have been empty or unparseable.`);
+                if (!semestersForSelectedYear || semestersForSelectedYear.length === 0) {
+                    console.warn(`BG: No semesters found via POST for year ${selectedYear.text}.`);
+                    // Don't throw error yet, let popup display "no semesters"
+                } else {
+                    console.log(`BG: Semesters for ${selectedYear.text}:`, semestersForSelectedYear.length);
+                }
+                // Select a semester (e.g., first one or "I semestr")
+                selectedSemester = semestersForSelectedYear.find(s => s.text.includes("II semestr") || s.text.includes("Payız")) || semestersForSelectedYear[0];
+                if (!selectedSemester && semestersForSelectedYear.length > 0) { // Fallback if specific not found but list exists
+                    selectedSemester = semestersForSelectedYear[0];
                 }
 
-                sendResponse({ data: { selectedYear, semesters: semestersForSelectedYear, allYears } });
+                if (!selectedSemester) { // If still no semester after POST and trying to pick one
+                    console.warn(`BG: Could not select a semester for year ${selectedYear.text}. Subject fetching will be skipped.`);
+                    // We can still send back what we have so far
+                    sendResponse({ data: { selectedYear, selectedSemester: null, semesters: semestersForSelectedYear, subjects: [] }});
+                    return; // Stop here if no semester to proceed with
+                }
+                console.log(`BG: Selected Semester: ${selectedSemester.text} (ID: ${selectedSemester.value})`);
+
+                // 4. Fetch HTML for Page with Year & Semester selected (this is html_content3)
+                const urlForSubjects = `${studentEvaluationPageUrl}?eduYear=${selectedYear.value}&eduSemester=${selectedSemester.value}`;
+                console.log("BG: Fetching HTML for subjects from:", urlForSubjects);
+                const subjectPageResponse = await fetch(urlForSubjects);
+                if (!subjectPageResponse.ok) throw new Error(`Fetch failed for ${urlForSubjects}: ${subjectPageResponse.statusText}`);
+                htmlWithSubjects = await subjectPageResponse.text();
+                if (!htmlWithSubjects) throw new Error("HTML for subject parsing is empty.");
+                console.log("BG: HTML for subject parsing ready, length:", htmlWithSubjects.length);
+
+                // 5. Extract Subjects
+                subjectsForSelectedSemester = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
+                console.log(`BG: Subjects extracted for ${selectedSemester.text}:`, subjectsForSelectedSemester.length);
+
+                sendResponse({
+                    data: {
+                        selectedYear,
+                        selectedSemester,
+                        semesters: semestersForSelectedYear, // All semesters for the selected year
+                        subjects: subjectsForSelectedSemester
+                    }
+                });
 
             } catch (error) {
-                console.error("BG: Error in 'fetchYearsAndSemesters':", error.message, error.stack ? error.stack.split('\n').slice(0,3).join('\n') : '');
+                console.error("BG: Error in 'fetchFullAcademicData':", error.message, error.stack ? error.stack.split('\n').slice(0,3).join('\n') : '');
                 sendResponse({ error: `BG Error: ${error.message}` });
             }
         })();
@@ -174,4 +171,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 setupOffscreenDocument().catch(err => console.warn("BG: Initial offscreen setup failed.", err));
-console.log("BG: Background script (POST for Semesters) fully loaded.");
+console.log("BG: Background script (Subjects Test) fully loaded.");

@@ -37,4 +37,19 @@ button {
 }
 h2, h3 {
     margin-top: 0;
+}#selected-year-container, #semesters-container, #subjects-container { /* Added subjects-container */
+    margin-top: 15px;
+    text-align: left;
+    border: 1px solid #ccc;
+    padding: 10px;
 }
+#semestersList, #subjectsList, #allYearsList { /* Added subjectsList */
+    list-style-type: none;
+    padding-left: 0;
+    max-height: 150px;
+    overflow-y: auto;
+}
+#semestersList li, #subjectsList li, #allYearsList li { /* Added subjectsList li */
+    padding: 3px 0;
+}
+

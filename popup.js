@@ -8,21 +8,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedYearText = document.getElementById('selectedYearText');
 
     const semestersContainer = document.getElementById('semesters-container');
+    const selectedSemesterText = document.getElementById('selectedSemesterText'); // Added
     const semestersList = document.getElementById('semestersList');
 
-    // Optional: for displaying all years for reference
-    // const allYearsContainer = document.getElementById('all-years-container');
-    // const allYearsList = document.getElementById('allYearsList');
+    const subjectsContainer = document.getElementById('subjects-container'); // Added
+    const subjectsList = document.getElementById('subjectsList');       // Added
 
     loadDataBtn.addEventListener('click', async () => {
-        console.log("POPUP: 'Load Year & Semesters' button clicked.");
+        console.log("POPUP: 'Load Data' button clicked.");
         loadingDiv.style.display = 'block';
         errorDiv.style.display = 'none';
         selectedYearContainer.style.display = 'none';
         semestersContainer.style.display = 'none';
-        // if (allYearsContainer) allYearsContainer.style.display = 'none';
+        subjectsContainer.style.display = 'none'; // Added
         semestersList.innerHTML = '';
-        // if (allYearsList) allYearsList.innerHTML = '';
+        subjectsList.innerHTML = '';              // Added
         loadDataBtn.disabled = true;
 
         try {
@@ -32,44 +32,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 resetButton();
                 return;
             }
-            console.log("POPUP: Sending 'fetchYearsAndSemesters' to background. Tab ID:", currentTab.id);
+            // Action name remains the same, background will do more steps
+            const actionToDispatch = "fetchFullAcademicData"; // Updated action name for clarity
+            console.log(`POPUP: Sending '${actionToDispatch}' to background. Tab ID:`, currentTab.id);
+
 
             const response = await chrome.runtime.sendMessage({
-                action: "fetchYearsAndSemesters", // New action
+                action: actionToDispatch,
                 tabId: currentTab.id
             });
 
-            console.log("POPUP: Response from background for 'fetchYearsAndSemesters':", response);
+            console.log(`POPUP: Response from background for '${actionToDispatch}':`, response);
 
             if (chrome.runtime.lastError) {
                 showError(`POPUP: Error from runtime: ${chrome.runtime.lastError.message}`);
             } else if (response && response.error) {
                 showError(`POPUP: Background error: ${response.error}`);
             } else if (response && response.data) {
-                const { selectedYear, semesters } = response.data;
+                const { selectedYear, selectedSemester, semesters, subjects } = response.data; // Expect selectedSemester now
 
                 if (selectedYear) {
                     selectedYearText.textContent = `${selectedYear.text} (ID: ${selectedYear.value})`;
                     selectedYearContainer.style.display = 'block';
                 } else {
-                    showError("POPUP: No academic year was selected or found by background.");
+                    showError("POPUP: No academic year was selected/found.");
                 }
 
-                // Optional: Display all years if needed for reference
-                // if (response.data.allYears && allYearsList) {
-                //     displayList(response.data.allYears, allYearsList, "academic year reference");
-                //     if (allYearsContainer) allYearsContainer.style.display = 'block';
-                // }
-
-                if (semesters && Array.isArray(semesters)) {
+                if (semesters && Array.isArray(semesters)) { // Display all available semesters
                     if (semesters.length > 0) {
                         displayList(semesters, semestersList, "semester");
-                        semestersContainer.style.display = 'block';
+                        // semestersContainer.style.display = 'block'; // Keep this hidden, show selected instead
                     } else {
-                        showError("POPUP: No semesters were found for the selected academic year.");
+                         // This might be normal if selectedYear has no semesters yet
+                         console.warn("POPUP: No available semesters were returned for the selected year.");
                     }
-                } else if (selectedYear) { // Only show "no semesters" if a year was processed
-                     showError("POPUP: Semesters data is missing or not an array.");
+                }
+                // Display the selected semester
+                if(selectedSemester) {
+                    selectedSemesterText.textContent = `${selectedSemester.text} (ID: ${selectedSemester.value})`;
+                    semestersContainer.style.display = 'block'; // Show the container if a semester is selected
+                } else if (selectedYear) {
+                    showError("POPUP: No semester was selected by the background script.");
+                }
+
+
+                if (subjects && Array.isArray(subjects)) {
+                    if (subjects.length > 0) {
+                        displayList(subjects, subjectsList, "subject");
+                        subjectsContainer.style.display = 'block';
+                    } else if (selectedSemester) { // Only show this if we expected subjects
+                        showError("POPUP: No subjects were found for the selected year/semester.");
+                    }
+                } else if (selectedSemester) { // Only show this if we expected subjects
+                     showError("POPUP: Subjects data is missing or not an array.");
                 }
 
             } else {
@@ -95,10 +110,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayList(items, listElement, itemTypeLabel) {
-        listElement.innerHTML = ''; // Clear previous
+        listElement.innerHTML = '';
         items.forEach(item => {
             const listItem = document.createElement('li');
-            listItem.textContent = `${item.text} (Value: ${item.value})`;
+            if (itemTypeLabel === "subject") {
+                 listItem.textContent = `${item.name} (ID: ${item.id})`;
+            } else { // for years and semesters
+                listItem.textContent = `${item.text} (Value: ${item.value})`;
+            }
             listElement.appendChild(listItem);
         });
     }
