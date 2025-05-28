@@ -8,35 +8,35 @@
 <body>
     <div class="container">
         <h1>UNEC Data Viewer</h1>
-        <button id="loadDataBtn">Load Academic Data</button>
-        <button id="loadExamResultsBtn">Load Exam Results</button>
-        <div id="loading" style="display:none;">Loading...</div>
+        <button id="loadDataBtn">Akademik Məlumatları Yüklə</button>
+        <button id="loadExamResultsBtn">İmtahan Nəticələrini Yüklə</button>
+        <div id="loading" style="display:none;">Yüklənir...</div>
         <div id="error" style="display:none; color: red;"></div>
 
         <div id="selected-year-container" style="display:none;">
-            <h2>Selected Academic Year:</h2>
+            <h2>Seçilmiş İl:</h2>
             <p id="selectedYearText"></p>
         </div>
 
         <div id="semesters-container" style="display:none;">
-            <h2>Selected Semester:</h2>
+            <h2>Seçilmiş Semestr:</h2>
             <p id="selectedSemesterText"></p>
-            <h3>Available Semesters (for selected year):</h3>
+            <h3>Semestrların Sayı (Seçilmiş il üçün):</h3>
             <ul id="semestersList"></ul>
         </div>
 
         <div id="subjects-container" style="display:none;">
-            <h2>Subjects (for selected year/semester):</h2>
-            <button id="fetchAttendanceBtn" style="display:none;">Refresh Evaluation Data</button>
-            <div id="attendanceLoading" style="display:none;">Loading evaluation data...</div>
+            <h2>Fənnlər:</h2>
+            <button id="fetchAttendanceBtn" style="display:none;">Yenidən Yüklə</button>
+            <div id="attendanceLoading" style="display:none;">Yüklənir...</div>
             <ul id="subjectsList"></ul>
         </div>
 
         <div id="exam-results-container" style="display:none;">
-            <h2>Exam Results:</h2>
-            <p><strong>Year:</strong> <span id="examSelectedYearText"></span></p>
-            <p><strong>Semester:</strong> <span id="examSelectedSemesterText"></span></p>
-            <div id="examResultsLoading" style="display:none;">Loading exam results...</div>
+            <h2>İmtahan Nəticələri:</h2>
+            <p><strong>İl:</strong> <span id="examSelectedYearText"></span></p>
+            <p><strong>Semestr:</strong> <span id="examSelectedSemesterText"></span></p>
+            <div id="examResultsLoading" style="display:none;">Yüklənir...</div>
             <ul id="examResultsList"></ul>
         </div>
 
