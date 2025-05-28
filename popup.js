@@ -62,10 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayAcademicData(data, subjectEvaluations = {}, fromCache = false) {
         const { selectedYear, selectedSemester, semesters, subjects } = data;
 
-        if (fromCache) {
-            showCacheIndicator("Keşləmədən yükləndi (30 dəqiqə keçərlı)", 'academic');
-        }
-
         if (selectedYear) {
             selectedYearText.textContent = selectedYear.text;
             selectedYearContainer.style.display = 'block';
@@ -141,10 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Function to display exam data
     function displayExamData(data, fromCache = false) {
         const { selectedYear, selectedSemester, examResults } = data;
-
-        if (fromCache) {
-            showCacheIndicator("Keşləmədən yükləndi (30 dəqiqə keçərlı)", 'exam');
-        }
 
         examSelectedYearText.textContent = selectedYear.text;
         examSelectedSemesterText.textContent = selectedSemester.text;
@@ -269,25 +261,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-
-    function showCacheIndicator(message, type) {
-        const indicator = document.createElement('div');
-        indicator.className = 'cache-indicator';
-        indicator.textContent = `📋 ${message}`;
-        
-        if (type === 'academic') {
-            selectedYearContainer.insertBefore(indicator, selectedYearContainer.firstChild);
-        } else if (type === 'exam') {
-            examResultsContainer.insertBefore(indicator, examResultsContainer.firstChild);
-        }
-        
-        // Remove indicator after 5 seconds
-        setTimeout(() => {
-            if (indicator.parentNode) {
-                indicator.parentNode.removeChild(indicator);
-            }
-        }, 5000);
-    }
 
     function showError(message) {
         console.log("POPUP: Displaying error - ", message);
