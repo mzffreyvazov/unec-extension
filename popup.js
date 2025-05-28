@@ -1,21 +1,19 @@
 // popup.js
 document.addEventListener('DOMContentLoaded', () => {
     const loadDataBtn = document.getElementById('loadDataBtn');
-    const fetchAttendanceBtn = document.getElementById('fetchAttendanceBtn');
     const loadExamResultsBtn = document.getElementById('loadExamResultsBtn');
     const loadingDiv = document.getElementById('loading');
-    const attendanceLoadingDiv = document.getElementById('attendanceLoading');
     const errorDiv = document.getElementById('error');
 
     const selectedYearContainer = document.getElementById('selected-year-container');
     const selectedYearText = document.getElementById('selectedYearText');
 
     const semestersContainer = document.getElementById('semesters-container');
-    const selectedSemesterText = document.getElementById('selectedSemesterText'); // Added
+    const selectedSemesterText = document.getElementById('selectedSemesterText');
     const semestersList = document.getElementById('semestersList');
 
-    const subjectsContainer = document.getElementById('subjects-container'); // Added
-    const subjectsList = document.getElementById('subjectsList');       // Added
+    const subjectsContainer = document.getElementById('subjects-container');
+    const subjectsList = document.getElementById('subjectsList');
 
     const examResultsContainer = document.getElementById('exam-results-container');
     const examSelectedYearText = document.getElementById('examSelectedYearText');
@@ -23,145 +21,85 @@ document.addEventListener('DOMContentLoaded', () => {
     const examResultsLoading = document.getElementById('examResultsLoading');
     const examResultsList = document.getElementById('examResultsList');
     
-    // Store subjects data globally for attendance fetching
+    // Store subjects data globally
     let currentSubjects = [];
 
-    loadDataBtn.addEventListener('click', async () => {
-        console.log("POPUP: 'Load Data' button clicked.");
-        loadingDiv.style.display = 'block';
-        errorDiv.style.display = 'none';
-        selectedYearContainer.style.display = 'none';
-        semestersContainer.style.display = 'none';
-        subjectsContainer.style.display = 'none';
-        semestersList.innerHTML = '';
-        subjectsList.innerHTML = '';
-        loadDataBtn.disabled = true;
-
+    // Try to load cached data when popup opens
+    async function loadCachedDataOnOpen() {
         try {
-            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!currentTab || !currentTab.id) {
-                showError("POPUP: Could not get current tab information.");
-                resetButton();
-                return;
-            }
+            console.log("POPUP: Checking for cached data on popup open");
             
-            // Check if we're on the right domain
-            if (!currentTab.url.includes('kabinet.unec.edu.az')) {
-                showError("Please navigate to UNEC cabinet (kabinet.unec.edu.az) first.");
-                resetButton();
-                return;
-            }
-
-            const actionToDispatch = "fetchFullAcademicData";
-            console.log(`POPUP: Sending '${actionToDispatch}' to background. Tab ID:`, currentTab.id);
-
-            const response = await chrome.runtime.sendMessage({
-                action: actionToDispatch,
-                tabId: currentTab.id
+            // Check for cached academic data
+            const academicResponse = await chrome.runtime.sendMessage({
+                action: "getCachedData",
+                dataType: "academic"
             });
-
-            console.log(`POPUP: Response from background for '${actionToDispatch}':`, response);
-
-            if (chrome.runtime.lastError) {
-                showError(`POPUP: Error from runtime: ${chrome.runtime.lastError.message}`);
-            } else if (response && response.error) {
-                showError(`POPUP: Background error: ${response.error}`);
-            } else if (response && response.data) {
-                const { selectedYear, selectedSemester, semesters, subjects } = response.data; // Expect selectedSemester now
-
-                if (selectedYear) {
-                    selectedYearText.textContent = selectedYear.text; // Removed ID display
-                    selectedYearContainer.style.display = 'block';
-                } else {
-                    showError("POPUP: No academic year was selected/found.");
-                }
-
-                if (semesters && Array.isArray(semesters)) { // Display all available semesters
-                    if (semesters.length > 0) {
-                        displayList(semesters, semestersList, "semester");
-                        // semestersContainer.style.display = 'block'; // Keep this hidden, show selected instead
-                    } else {
-                         // This might be normal if selectedYear has no semesters yet
-                         console.warn("POPUP: No available semesters were returned for the selected year.");
-                    }
-                }
-                // Display the selected semester
-                if(selectedSemester) {
-                    selectedSemesterText.textContent = selectedSemester.text; // Removed ID display
-                    semestersContainer.style.display = 'block'; // Show the container if a semester is selected
-                } else if (selectedYear) {
-                    showError("POPUP: No semester was selected by the background script.");
-                }
-
-
-                if (subjects && Array.isArray(subjects)) {
-                    if (subjects.length > 0) {
-                        displayList(subjects, subjectsList, "subject");
-                        subjectsContainer.style.display = 'block';
-                        
-                        // Automatically fetch attendance data after displaying subjects
-                        await fetchAttendanceData();
-                    } else if (selectedSemester) { // Only show this if we expected subjects
-                        showError("POPUP: No subjects were found for the selected year/semester.");
-                    }
-                } else if (selectedSemester) { // Only show this if we expected subjects
-                     showError("POPUP: Subjects data is missing or not an array.");
-                }
-
+            
+            if (academicResponse && academicResponse.success && academicResponse.data) {
+                console.log("POPUP: Found cached academic data, displaying it");
+                displayAcademicData(academicResponse.data, academicResponse.subjectEvaluations || {}, true);
             } else {
-                showError("POPUP: Unexpected response structure. Check background console.");
+                console.log("POPUP: No cached data found, will fetch fresh on user action");
             }
-        } catch (err) {
-            console.error("POPUP: Error in click handler:", err);
-            if (err.message.includes("Content script") || err.message.includes("refresh the page")) {
-                showError("İçerik skripti problemi. Səhifəni yeniləyib təkrar cəhd edin.");
-            } else {
-                showError(`POPUP: Client-side error: ${err.message}`);
-            }
-        } finally {
-            loadingDiv.style.display = 'none';
-            resetButton();
-        }
-    });
-    
-    // Extract the attendance fetching logic into a separate function
-    async function fetchAttendanceData() {
-        if (!currentSubjects || currentSubjects.length === 0) {
-            showError("No subjects available to fetch attendance data");
-            return;
-        }
-        
-        fetchAttendanceBtn.disabled = true;
-        attendanceLoadingDiv.style.display = 'block';
-        
-        try {
-            currentSubjects.forEach(subject => {
-                const subjectElement = document.getElementById(`subject-${subject.id}`);
-                if (subjectElement) {
-                    const detailsContainer = subjectElement.querySelector('.subject-details-container');
-                    if (detailsContainer) {
-                        detailsContainer.innerHTML = `<span class="details-loading">Loading...</span>`; // Simplified loading text
-                    }
-                }
+            
+            // Check for cached exam results
+            const examResponse = await chrome.runtime.sendMessage({
+                action: "getCachedData", 
+                dataType: "exam"
             });
             
-            const response = await chrome.runtime.sendMessage({
-                action: "fetchAllSubjectsEvaluation",
-                subjects: currentSubjects
-            });
+            if (examResponse && examResponse.success && examResponse.data) {
+                console.log("POPUP: Found cached exam results, displaying them");
+                displayExamData(examResponse.data, true);
+            }
             
-            if (response.success && response.data) {
-                Object.keys(response.data).forEach(subjectId => {
-                    const result = response.data[subjectId];
-                    const subjectElement = document.getElementById(`subject-${subjectId}`);
+        } catch (error) {
+            console.log("POPUP: No cached data available or error loading cache:", error.message);
+        }
+    }
+
+    // Function to display academic data with subject evaluations
+    function displayAcademicData(data, subjectEvaluations = {}, fromCache = false) {
+        const { selectedYear, selectedSemester, semesters, subjects } = data;
+
+        if (fromCache) {
+            showCacheIndicator("Keşləmədən yükləndi (30 dəqiqə keçərlı)", 'academic');
+        }
+
+        if (selectedYear) {
+            selectedYearText.textContent = selectedYear.text;
+            selectedYearContainer.style.display = 'block';
+        }
+
+        if (semesters && Array.isArray(semesters) && semesters.length > 0) {
+            displayList(semesters, semestersList, "semester");
+        }
+
+        if (selectedSemester) {
+            selectedSemesterText.textContent = selectedSemester.text;
+            semestersContainer.style.display = 'block';
+        }
+
+        if (subjects && Array.isArray(subjects) && subjects.length > 0) {
+            displayList(subjects, subjectsList, "subject");
+            subjectsContainer.style.display = 'block';
+            
+            // Display subject evaluation data
+            displaySubjectEvaluations(subjectEvaluations);
+        }
+    }
+
+    // Function to display subject evaluations
+    function displaySubjectEvaluations(subjectEvaluations) {
+        currentSubjects.forEach(subject => {
+            const subjectElement = document.getElementById(`subject-${subject.id}`);
+            if (subjectElement) {
+                const detailsContainer = subjectElement.querySelector('.subject-details-container');
+                if (detailsContainer) {
+                    const result = subjectEvaluations[subject.id];
                     
-                    if (subjectElement) {
-                        const detailsContainer = subjectElement.querySelector('.subject-details-container');
-                        if (!detailsContainer) { 
-                            console.error("Details container not found for subject", subjectId);
-                            return;
-                        }
-                        detailsContainer.innerHTML = ''; // Clear loading or previous content
+                    if (result) {
+                        detailsContainer.innerHTML = '';
 
                         const currentEvalSpan = document.createElement('span');
                         currentEvalSpan.className = 'current-evaluation-value';
@@ -188,35 +126,94 @@ document.addEventListener('DOMContentLoaded', () => {
                             currentEvalSpan.classList.add('error');
                             attendanceSpan.textContent = 'Qaib: Error';
                             attendanceSpan.classList.add('error');
-                            if (result.error) console.warn(`POPUP: Error for subject ${subjectId}: ${result.error}`);
                         }
-                        detailsContainer.appendChild(currentEvalSpan); 
+                        
+                        detailsContainer.appendChild(currentEvalSpan);
                         detailsContainer.appendChild(attendanceSpan);
+                    } else {
+                        detailsContainer.innerHTML = `<span class="details-loading">Məlumat yoxdur</span>`;
                     }
-                });
-            } else {
-                showError(response.error || "Failed to fetch all subjects' evaluation data");
-                // Clear loading indicators from all if main fetch failed
-                currentSubjects.forEach(subject => {
-                    const subjectElement = document.getElementById(`subject-${subject.id}`);
-                    if (subjectElement) {
-                        const detailsContainer = subjectElement.querySelector('.subject-details-container');
-                        if (detailsContainer) detailsContainer.innerHTML = '<span class="error">Failed to load</span>';
-                    }
-                });
+                }
             }
-        } catch (error) {
-            console.error("Error fetching attendance data:", error);
-            showError(`Error: ${error.message}`);
-        } finally {
-            attendanceLoadingDiv.style.display = 'none';
-            fetchAttendanceBtn.disabled = false;
+        });
+    }
+
+    // Function to display exam data
+    function displayExamData(data, fromCache = false) {
+        const { selectedYear, selectedSemester, examResults } = data;
+
+        if (fromCache) {
+            showCacheIndicator("Keşləmədən yükləndi (30 dəqiqə keçərlı)", 'exam');
+        }
+
+        examSelectedYearText.textContent = selectedYear.text;
+        examSelectedSemesterText.textContent = selectedSemester.text;
+
+        if (examResults && examResults.length > 0) {
+            displayExamResults(examResults);
+            examResultsContainer.style.display = 'block';
         }
     }
-    
-    // Keep the manual fetch button for re-fetching if needed
-    fetchAttendanceBtn.addEventListener('click', fetchAttendanceData);
 
+    // Load cached data when popup opens
+    loadCachedDataOnOpen();
+
+    loadDataBtn.addEventListener('click', async () => {
+        console.log("POPUP: 'Load Data' button clicked.");
+        loadingDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+        selectedYearContainer.style.display = 'none';
+        semestersContainer.style.display = 'none';
+        subjectsContainer.style.display = 'none';
+        semestersList.innerHTML = '';
+        subjectsList.innerHTML = '';
+        loadDataBtn.disabled = true;
+
+        try {
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!currentTab || !currentTab.id) {
+                showError("POPUP: Could not get current tab information.");
+                resetButton();
+                return;
+            }
+            
+            if (!currentTab.url.includes('kabinet.unec.edu.az')) {
+                showError("Please navigate to UNEC cabinet (kabinet.unec.edu.az) first.");
+                resetButton();
+                return;
+            }
+
+            // Always fetch fresh data when button is clicked
+            const response = await chrome.runtime.sendMessage({
+                action: "fetchFullAcademicData",
+                tabId: currentTab.id,
+                forceFresh: true
+            });
+
+            console.log(`POPUP: Response from background:`, response);
+
+            if (chrome.runtime.lastError) {
+                showError(`POPUP: Error from runtime: ${chrome.runtime.lastError.message}`);
+            } else if (response && response.error) {
+                showError(`POPUP: Background error: ${response.error}`);
+            } else if (response && response.data) {
+                displayAcademicData(response.data, response.subjectEvaluations || {}, response.fromCache);
+            } else {
+                showError("POPUP: Unexpected response structure. Check background console.");
+            }
+        } catch (err) {
+            console.error("POPUP: Error in click handler:", err);
+            if (err.message.includes("Content script") || err.message.includes("refresh the page")) {
+                showError("İçerik skripti problemi. Səhifəni yeniləyib təkrar cəhd edin.");
+            } else {
+                showError(`POPUP: Client-side error: ${err.message}`);
+            }
+        } finally {
+            loadingDiv.style.display = 'none';
+            resetButton();
+        }
+    });
+    
     loadExamResultsBtn.addEventListener('click', async () => {
         console.log("POPUP: 'Load Exam Results' button clicked.");
         examResultsLoading.style.display = 'block';
@@ -239,17 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("POPUP: Response from background for fetchExamResults:", response);
 
             if (response.success && response.data) {
-                const { selectedYear, selectedSemester, examResults } = response.data;
-
-                examSelectedYearText.textContent = selectedYear.text;
-                examSelectedSemesterText.textContent = selectedSemester.text;
-
-                if (examResults && examResults.length > 0) {
-                    displayExamResults(examResults);
-                    examResultsContainer.style.display = 'block';
-                } else {
-                    showError("No exam results found for the selected year/semester.");
-                }
+                displayExamData(response.data, response.fromCache);
             } else {
                 showError(response.error || "Failed to fetch exam results");
             }
@@ -266,6 +253,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Add clear cache functionality
+    document.addEventListener('keydown', async (e) => {
+        // Clear cache with Ctrl+Shift+R
+        if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+            e.preventDefault();
+            try {
+                await chrome.runtime.sendMessage({ action: "clearCache" });
+                showError("Keş təmizləndi. Məlumatlar yenidən yüklənəcək.");
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 3000);
+            } catch (error) {
+                console.error("Failed to clear cache:", error);
+            }
+        }
+    });
+
+    function showCacheIndicator(message, type) {
+        const indicator = document.createElement('div');
+        indicator.className = 'cache-indicator';
+        indicator.textContent = `📋 ${message}`;
+        
+        if (type === 'academic') {
+            selectedYearContainer.insertBefore(indicator, selectedYearContainer.firstChild);
+        } else if (type === 'exam') {
+            examResultsContainer.insertBefore(indicator, examResultsContainer.firstChild);
+        }
+        
+        // Remove indicator after 5 seconds
+        setTimeout(() => {
+            if (indicator.parentNode) {
+                indicator.parentNode.removeChild(indicator);
+            }
+        }, 5000);
+    }
+
     function showError(message) {
         console.log("POPUP: Displaying error - ", message);
         errorDiv.textContent = message;
@@ -281,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (itemTypeLabel === "subject") {
             currentSubjects = items;
-            fetchAttendanceBtn.style.display = items.length > 0 ? 'block' : 'none';
             
             items.forEach(item => {
                 const listItem = document.createElement('li');
@@ -290,20 +312,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'subject-name';
-                nameSpan.textContent = item.name; // Removed ID display
+                nameSpan.textContent = item.name;
                 listItem.appendChild(nameSpan);
 
                 const detailsContainer = document.createElement('div');
                 detailsContainer.className = 'subject-details-container';
-                // Details will be populated automatically after subjects are loaded
+                detailsContainer.innerHTML = `<span class="details-loading">Yüklənir...</span>`;
                 listItem.appendChild(detailsContainer);
                 
                 listElement.appendChild(listItem);
             });
-        } else { // for years and semesters
+        } else {
             items.forEach(item => {
                 const listItem = document.createElement('li');
-                listItem.textContent = item.text; // Removed value display
+                listItem.textContent = item.text;
                 listElement.appendChild(listItem);
             });
         }

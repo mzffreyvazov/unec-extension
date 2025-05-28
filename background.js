@@ -5,12 +5,62 @@ const BASE_AZ_URL = "https://kabinet.unec.edu.az/az/";
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 let creatingOffscreenPromise = null;
 
-// --- Offscreen Document Management & parseHTMLViaOffscreen (Keep same as message #17) ---
-async function hasOffscreenDocument() { /* ... same ... */
+// Storage utilities - moved to top to avoid hoisting issues
+const STORAGE_KEYS = {
+    ACADEMIC_DATA: 'academic_data',
+    SUBJECT_EVALUATIONS: 'subject_evaluations',
+    EXAM_RESULTS: 'exam_results',
+    LAST_FETCH_TIME: 'last_fetch_time',
+    LAST_SUBJECT_EVAL_FETCH_TIME: 'last_subject_eval_fetch_time',
+    LAST_EXAM_FETCH_TIME: 'last_exam_fetch_time'
+};
+
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+async function saveToStorage(key, data) {
+    try {
+        await chrome.storage.local.set({ [key]: data });
+        console.log(`BG: Saved ${key} to storage`);
+    } catch (error) {
+        console.error(`BG: Failed to save ${key} to storage:`, error);
+    }
+}
+
+async function getFromStorage(key) {
+    try {
+        const result = await chrome.storage.local.get([key]);
+        return result[key] || null;
+    } catch (error) {
+        console.error(`BG: Failed to get ${key} from storage:`, error);
+        return null;
+    }
+}
+
+async function checkCacheValidity(timestampKey) {
+    const lastFetchTime = await getFromStorage(timestampKey);
+    if (!lastFetchTime) return false;
+    
+    const now = Date.now();
+    const timeDiff = now - lastFetchTime;
+    return timeDiff < CACHE_DURATION;
+}
+
+async function clearOldCache() {
+    try {
+        await chrome.storage.local.clear();
+        console.log("BG: Cleared old cache");
+    } catch (error) {
+        console.error("BG: Failed to clear cache:", error);
+    }
+}
+
+// --- Offscreen Document Management & parseHTMLViaOffscreen ---
+async function hasOffscreenDocument() {
     const contexts = await chrome.runtime.getContexts({contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT], documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]});
     return contexts.length > 0;
 }
-async function setupOffscreenDocument() { /* ... same ... */
+
+async function setupOffscreenDocument() {
     if (await hasOffscreenDocument()) return true;
     if (creatingOffscreenPromise) return creatingOffscreenPromise;
     creatingOffscreenPromise = chrome.offscreen.createDocument({ url: OFFSCREEN_DOCUMENT_PATH,reasons: [chrome.offscreen.Reason.DOM_PARSER], justification: 'Parse HTML.'})
@@ -18,7 +68,8 @@ async function setupOffscreenDocument() { /* ... same ... */
     .finally(() => { creatingOffscreenPromise = null; });
     return creatingOffscreenPromise;
 }
-async function parseHTMLViaOffscreen(htmlString, task) { /* ... same (ensure logging and timeout are robust) ... */
+
+async function parseHTMLViaOffscreen(htmlString, task) {
     const setupSuccess = await setupOffscreenDocument();
     if (!setupSuccess && !(await hasOffscreenDocument())) throw new Error("Offscreen doc unavailable.");
     return new Promise((resolve, reject) => {
@@ -240,25 +291,108 @@ async function fetchViaContentScript(tabId, url, options = {}) {
     }
 }
 
+// New function to fetch all subject evaluations and cache them
+async function fetchAllSubjectEvaluations(subjects, tabId) {
+    console.log("BG: Fetching evaluations for all subjects");
+    const results = {};
+    
+    for (const subject of subjects) {
+        if (!subject.id || !subject.eduFormId) {
+            console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
+            results[subject.id || `unknown-${Math.random()}`] = { 
+                success: false, 
+                error: "Missing subject id or eduFormId", 
+                details: { attendancePercentage: null, currentEvaluation: null }
+            };
+            continue;
+        }
+        console.log(`BG: Fetching evaluation for subject: ${subject.name} (ID: ${subject.id}, eduFormId: ${subject.eduFormId})`);
+        const result = await fetchSubjectEvaluationData(subject.id, subject.eduFormId, tabId);
+        results[subject.id] = result;
+        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+    }
+    
+    return results;
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "contentScriptReady") {
         console.log("BG: Content script ready on:", request.url);
         return;
     }
     
+    if (request.action === "getCachedData") {
+        (async () => {
+            try {
+                console.log("BG: getCachedData request for:", request.dataType);
+                
+                if (request.dataType === "academic") {
+                    const isCacheStillValid = await checkCacheValidity(STORAGE_KEYS.LAST_FETCH_TIME);
+                    if (isCacheStillValid) {
+                        const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
+                        const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
+                        
+                        if (cachedData) {
+                            console.log("BG: Returning cached academic data with subject evaluations");
+                            sendResponse({ 
+                                success: true, 
+                                data: cachedData,
+                                subjectEvaluations: cachedSubjectEvals || {}
+                            });
+                            return;
+                        }
+                    }
+                } else if (request.dataType === "exam") {
+                    const isCacheStillValid = await checkCacheValidity(STORAGE_KEYS.LAST_EXAM_FETCH_TIME);
+                    if (isCacheStillValid) {
+                        const cachedData = await getFromStorage(STORAGE_KEYS.EXAM_RESULTS);
+                        if (cachedData && cachedData.success) {
+                            console.log("BG: Returning cached exam results");
+                            sendResponse({ success: true, data: cachedData.data });
+                            return;
+                        }
+                    }
+                }
+                
+                console.log("BG: No valid cached data found for:", request.dataType);
+                sendResponse({ success: false, message: "No valid cached data" });
+                
+            } catch (error) {
+                console.error("BG: Error getting cached data:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    
     if (request.action === "fetchFullAcademicData") {
         (async () => {
             console.log("BG: 'fetchFullAcademicData' action started. Tab ID:", request.tabId);
-            let studentEvaluationPageUrl;
-            let initialHtmlForYears;
-            let htmlWithSubjects;
-
-            let selectedYear = null, allYears = [];
-            let selectedSemester = null, semestersForSelectedYear = [];
-            let subjectsForSelectedSemester = [];
-            let csrfToken = null;
-
+            
             try {
+                // Only use cache for subsequent calls, not if explicitly forcing fresh fetch
+                const forceFresh = request.forceFresh === true;
+                
+                if (!forceFresh) {
+                    // Check if we have valid cached data
+                    const isCacheStillValid = await checkCacheValidity(STORAGE_KEYS.LAST_FETCH_TIME);
+                    if (isCacheStillValid) {
+                        const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
+                        const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
+                        
+                        if (cachedData) {
+                            console.log("BG: Using cached academic data with subject evaluations");
+                            sendResponse({ 
+                                data: cachedData, 
+                                subjectEvaluations: cachedSubjectEvals || {},
+                                fromCache: true 
+                            });
+                            return;
+                        }
+                    }
+                }
+
+                // Proceed with fresh fetch
                 if (!request.tabId) throw new Error("Tab ID missing.");
                 const currentTab = await chrome.tabs.get(request.tabId);
                 if (!currentTab || !currentTab.url) throw new Error("Could not get tab info.");
@@ -271,6 +405,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         throw new Error("Content script is not available. Please refresh the page and try again.");
                     }
                 }
+
+                // Declare variables
+                let studentEvaluationPageUrl;
+                let initialHtmlForYears;
+                let htmlWithSubjects;
+                let allYears = [];
+                let selectedYear = null;
+                let selectedSemester = null;
+                let semestersForSelectedYear = [];
+                let subjectsForSelectedSemester = [];
+                let csrfToken = null;
 
                 // 1. Get Initial Page HTML (for Years and potential CSRF)
                 const noteAndAnnounceUrl = new URL('noteandannounce', BASE_AZ_URL).href;
@@ -286,39 +431,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     studentEvaluationPageUrl = new URL('studentEvaluation', BASE_AZ_URL).href;
                     initialHtmlForYears = await fetchViaContentScript(request.tabId, studentEvaluationPageUrl);
                 }
-                if (!initialHtmlForYears) throw new Error("HTML for year parsing is empty.");
+                if (!initialHtmlForYears) throw new Error("BG: HTML for year parsing is empty.");
                 console.log("BG: Student Eval URL for operations:", studentEvaluationPageUrl);
-                // TODO: Extract CSRF from initialHtmlForYears if needed
 
                 // 2. Extract Years, Select Latest
                 allYears = await extractYearsFromEvalPageHTML(initialHtmlForYears);
                 if (!allYears || allYears.length === 0) throw new Error("No academic years extracted.");
-                selectedYear = allYears[0]; // Assuming sorted: latest is first
+                selectedYear = allYears[0];
                 console.log(`BG: Selected Year: ${selectedYear.text} (ID: ${selectedYear.value})`);
 
                 // 3. Fetch Semesters for Selected Year (via POST)
                 semestersForSelectedYear = await fetchSemestersForYearPOST(selectedYear.value, csrfToken, request.tabId);
                 if (!semestersForSelectedYear || semestersForSelectedYear.length === 0) {
                     console.warn(`BG: No semesters found via POST for year ${selectedYear.text}.`);
-                    // Don't throw error yet, let popup display "no semesters"
                 } else {
                     console.log(`BG: Semesters for ${selectedYear.text}:`, semestersForSelectedYear.length);
                 }
-                // Select a semester (e.g., first one or "I semestr")
+
                 selectedSemester = semestersForSelectedYear.find(s => s.text.includes("II semestr") || s.text.includes("Payız")) || semestersForSelectedYear[0];
-                if (!selectedSemester && semestersForSelectedYear.length > 0) { // Fallback if specific not found but list exists
+                if (!selectedSemester && semestersForSelectedYear.length > 0) {
                     selectedSemester = semestersForSelectedYear[0];
                 }
 
-                if (!selectedSemester) { // If still no semester after POST and trying to pick one
+                if (!selectedSemester) {
                     console.warn(`BG: Could not select a semester for year ${selectedYear.text}. Subject fetching will be skipped.`);
-                    // We can still send back what we have so far
                     sendResponse({ data: { selectedYear, selectedSemester: null, semesters: semestersForSelectedYear, subjects: [] }});
-                    return; // Stop here if no semester to proceed with
+                    return;
                 }
                 console.log(`BG: Selected Semester: ${selectedSemester.text} (ID: ${selectedSemester.value})`);
 
-                // 4. Fetch HTML for Page with Year & Semester selected (this is html_content3)
+                // 4. Fetch HTML for Page with Year & Semester selected
                 const urlForSubjects = `${studentEvaluationPageUrl}?eduYear=${selectedYear.value}&eduSemester=${selectedSemester.value}`;
                 console.log("BG: Fetching HTML for subjects from:", urlForSubjects);
                 htmlWithSubjects = await fetchViaContentScript(request.tabId, urlForSubjects);
@@ -329,13 +471,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 subjectsForSelectedSemester = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
                 console.log(`BG: Subjects extracted for ${selectedSemester.text}:`, subjectsForSelectedSemester.length);
 
-                sendResponse({
-                    data: {
-                        selectedYear,
-                        selectedSemester,
-                        semesters: semestersForSelectedYear, // All semesters for the selected year
-                        subjects: subjectsForSelectedSemester
-                    }
+                const freshAcademicData = {
+                    selectedYear,
+                    selectedSemester,
+                    semesters: semestersForSelectedYear,
+                    subjects: subjectsForSelectedSemester
+                };
+
+                // 6. Fetch subject evaluations if we have subjects
+                let subjectEvaluations = {};
+                if (subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
+                    console.log("BG: Fetching subject evaluations for all subjects");
+                    subjectEvaluations = await fetchAllSubjectEvaluations(subjectsForSelectedSemester, request.tabId);
+                    console.log("BG: Subject evaluations completed, keys:", Object.keys(subjectEvaluations));
+                }
+
+                // Save both academic data and subject evaluations to cache
+                await saveToStorage(STORAGE_KEYS.ACADEMIC_DATA, freshAcademicData);
+                await saveToStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS, subjectEvaluations);
+                await saveToStorage(STORAGE_KEYS.LAST_FETCH_TIME, Date.now());
+
+                sendResponse({ 
+                    data: freshAcademicData, 
+                    subjectEvaluations: subjectEvaluations,
+                    fromCache: false 
                 });
 
             } catch (error) {
@@ -344,12 +503,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
         })();
         return true;
-    } 
+    }
     else if (request.action === "fetchSubjectEvaluation") {
         (async () => {
             try {
                 if (!request.subjectId) throw new Error("Subject ID is missing");
-                if (!request.eduFormId) throw new Error("eduFormId is missing"); // Make it required
+                if (!request.eduFormId) throw new Error("eduFormId is missing");
                 const result = await fetchSubjectEvaluationData(request.subjectId, request.eduFormId, sender.tab.id);
                 sendResponse(result);
             } catch (error) {
@@ -359,45 +518,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })();
         return true;
     }
-    else if (request.action === "fetchAllSubjectsEvaluation") {
-        (async () => {
-            try {
-                if (!request.subjects || !Array.isArray(request.subjects)) {
-                    throw new Error("Invalid subjects array");
-                }
-                
-                // Get current tab ID
-                const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                if (!currentTab?.id) throw new Error("Could not get current tab");
-                
-                const results = {};
-                for (const subject of request.subjects) {
-                    if (!subject.id || !subject.eduFormId) {
-                        console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
-                        results[subject.id || `unknown-${Math.random()}`] = { 
-                            success: false, 
-                            error: "Missing subject id or eduFormId", 
-                            details: { attendancePercentage: null, currentEvaluation: null }
-                        };
-                        continue;
-                    }
-                    console.log(`BG: Fetching evaluation for subject: ${subject.name} (ID: ${subject.id}, eduFormId: ${subject.eduFormId})`);
-                    const result = await fetchSubjectEvaluationData(subject.id, subject.eduFormId, currentTab.id);
-                    results[subject.id] = result;
-                    await new Promise(resolve => setTimeout(resolve, 250));
-                }
-                
-                sendResponse({ success: true, data: results });
-            } catch (error) {
-                console.error("BG: Error in fetchAllSubjectsEvaluation handler:", error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true;
-    }
     else if (request.action === "fetchExamResults") {
         (async () => {
             try {
+                // Check if we have valid cached exam results
+                const isCacheStillValid = await checkCacheValidity(STORAGE_KEYS.LAST_EXAM_FETCH_TIME);
+                if (isCacheStillValid) {
+                    const cachedExamResults = await getFromStorage(STORAGE_KEYS.EXAM_RESULTS);
+                    if (cachedExamResults) {
+                        console.log("BG: Using cached exam results");
+                        sendResponse({ ...cachedExamResults, fromCache: true });
+                        return;
+                    }
+                }
+
                 // Get current tab ID
                 const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                 if (!currentTab?.id) throw new Error("Could not get current tab");
@@ -412,11 +546,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
                 
                 const result = await fetchExamResults(currentTab.id);
-                sendResponse(result);
+                
+                // Save to cache if successful
+                if (result.success) {
+                    await saveToStorage(STORAGE_KEYS.EXAM_RESULTS, result);
+                    await saveToStorage(STORAGE_KEYS.LAST_EXAM_FETCH_TIME, Date.now());
+                }
+                
+                sendResponse({ ...result, fromCache: false });
             } catch (error) {
                 console.error("BG: Error in fetchExamResults handler:", error);
                 sendResponse({ success: false, error: error.message });
             }
+        })();
+        return true;
+    }
+    else if (request.action === "clearCache") {
+        (async () => {
+            await clearOldCache();
+            sendResponse({ success: true });
         })();
         return true;
     }

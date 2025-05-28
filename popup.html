@@ -1,15 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>UNEC - Academic Data</title>
+    <title>UNEC - Sadə Kabinet</title>
     <meta charset="UTF-8">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <h1>UNEC Data Viewer</h1>
-        <button id="loadDataBtn">Akademik Məlumatları Yüklə</button>
-        <button id="loadExamResultsBtn">İmtahan Nəticələrini Yüklə</button>
+        <div class="button-group">
+            <button id="loadDataBtn">Akademik Məlumatları Yüklə</button>
+            <button id="loadExamResultsBtn">İmtahan Nəticələrini Yüklə</button>
+        </div>
+        <div class="cache-info">
+            <small>💡 Məlumatlar 30 dəqiqə keşlənir. Yenidən yükləmək üçün: Ctrl+Shift+R</small>
+        </div>
         <div id="loading" style="display:none;">Yüklənir...</div>
         <div id="error" style="display:none; color: red;"></div>
 
@@ -26,9 +31,7 @@
         </div>
 
         <div id="subjects-container" style="display:none;">
-            <h2>Fənnlər:</h2>
-            <button id="fetchAttendanceBtn" style="display:none;">Yenidən Yüklə</button>
-            <div id="attendanceLoading" style="display:none;">Yüklənir...</div>
+            <h2>Fənnlər və Qiymətləndirmə:</h2>
             <ul id="subjectsList"></ul>
         </div>
 
