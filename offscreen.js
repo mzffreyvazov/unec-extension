@@ -64,8 +64,23 @@ chrome.runtime.onMessage.addListener(async (request) => {
                             const eduFormIdCell = cells[4]; 
 
                             const subjectId = idCell?.textContent?.trim();
-                            const subjectName = nameCell?.textContent?.trim();
+                            let subjectName = nameCell?.textContent?.trim();
                             const eduFormId = eduFormIdCell?.textContent?.trim();
+
+                            // Clean up subject name by removing course code pattern
+                            if (subjectName) {
+                                // Remove course code pattern like "10_22_01_568-1_00652_" and everything after it
+                                const courseCodePattern = /\s+\d+_\d+_\d+_\d+-\d+_\d+_.*/;
+                                subjectName = subjectName.replace(courseCodePattern, '').trim();
+                                
+                                // Also handle cases where the course code starts without space
+                                const courseCodePattern2 = /\d+_\d+_\d+_\d+-\d+_\d+_.*/;
+                                if (courseCodePattern2.test(subjectName)) {
+                                    const parts = subjectName.split(/\s+/);
+                                    // Keep only parts that don't match the course code pattern
+                                    subjectName = parts.filter(part => !courseCodePattern2.test(part)).join(' ').trim();
+                                }
+                            }
 
                             if (subjectId && subjectName && eduFormId) {
                                 subjects.push({ id: subjectId, name: subjectName, eduFormId: eduFormId });
@@ -152,10 +167,26 @@ chrome.runtime.onMessage.addListener(async (request) => {
 
                             if (subjectCell && examScoreCell) {
                                 let subjectName = subjectCell.textContent?.trim();
-                                // Extract just the subject name (before the <br/> or course code)
+                                // Extract just the subject name and clean it up
                                 if (subjectName) {
+                                    // Split by newlines first
                                     const parts = subjectName.split('\n');
-                                    subjectName = parts[0].trim().replace(/^\d+\s+/, ''); // Remove leading numbers and spaces
+                                    subjectName = parts[0].trim();
+                                    
+                                    // Remove leading numbers and course code pattern
+                                    subjectName = subjectName.replace(/^\d+\s+/, ''); // Remove leading numbers and spaces
+                                    
+                                    // Remove course code pattern like "10_22_01_568-1_00652_" and everything after it
+                                    const courseCodePattern = /\s+\d+_\d+_\d+_\d+-\d+_\d+_.*/;
+                                    subjectName = subjectName.replace(courseCodePattern, '').trim();
+                                    
+                                    // Also handle cases where the course code starts without space
+                                    const courseCodePattern2 = /\d+_\d+_\d+_\d+-\d+_\d+_.*/;
+                                    if (courseCodePattern2.test(subjectName)) {
+                                        const nameParts = subjectName.split(/\s+/);
+                                        // Keep only parts that don't match the course code pattern
+                                        subjectName = nameParts.filter(part => !courseCodePattern2.test(part)).join(' ').trim();
+                                    }
                                 }
 
                                 const examScore = examScoreCell.textContent?.trim();
