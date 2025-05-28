@@ -105,12 +105,6 @@ async function fetchExamResults(tabId) {
     console.log("BG: Starting exam results fetch process");
     
     try {
-        // Check if user is logged in first
-        const isLoggedIn = await checkLoginStatus(tabId);
-        if (!isLoggedIn) {
-            throw new Error("User is not logged in to UNEC cabinet. Please log in first.");
-        }
-        
         // 1. Fetch initial exam results page to get years
         const eresultsUrl = new URL('eresults', BASE_AZ_URL).href;
         const initialHtml = await fetchViaContentScript(tabId, eresultsUrl);
@@ -171,10 +165,63 @@ async function fetchExamResults(tabId) {
     }
 }
 
+// Helper function to ensure content script is ready
+async function ensureContentScriptReady(tabId, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const response = await chrome.tabs.sendMessage(tabId, { action: "ping" });
+            if (response && response.success) {
+                console.log("BG: Content script is ready");
+                return true;
+            }
+        } catch (error) {
+            console.log(`BG: Content script not ready, attempt ${i + 1}/${maxRetries}`);
+            if (i < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+            }
+        }
+    }
+    return false;
+}
+
+// Helper function to inject content script if needed
+async function injectContentScriptIfNeeded(tabId) {
+    try {
+        // Try to ping the content script first
+        const isReady = await ensureContentScriptReady(tabId, 1);
+        if (isReady) return true;
+        
+        console.log("BG: Injecting content script");
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js']
+        });
+        
+        // Wait a bit for the script to initialize
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if it's ready now
+        return await ensureContentScriptReady(tabId, 2);
+    } catch (error) {
+        console.error("BG: Failed to inject content script:", error);
+        return false;
+    }
+}
+
 // Helper function to make requests through content script
 async function fetchViaContentScript(tabId, url, options = {}) {
     try {
         console.log("BG: Requesting fetch via content script for URL:", url);
+        
+        // Ensure content script is ready
+        const isReady = await ensureContentScriptReady(tabId);
+        if (!isReady) {
+            // Try to inject the content script
+            const injected = await injectContentScriptIfNeeded(tabId);
+            if (!injected) {
+                throw new Error("Content script is not available and could not be injected");
+            }
+        }
         
         const response = await chrome.tabs.sendMessage(tabId, {
             action: "fetchFromWebpage",
@@ -193,42 +240,36 @@ async function fetchViaContentScript(tabId, url, options = {}) {
     }
 }
 
-// Helper function to check if user is logged in
-async function checkLoginStatus(tabId) {
-    try {
-        const response = await chrome.tabs.sendMessage(tabId, {
-            action: "checkLoginStatus"
-        });
-        
-        return response.success ? response.isLoggedIn : false;
-    } catch (error) {
-        console.error("BG: Login status check error:", error);
-        return false;
-    }
-}
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "contentScriptReady") {
+        console.log("BG: Content script ready on:", request.url);
+        return;
+    }
+    
     if (request.action === "fetchFullAcademicData") {
         (async () => {
             console.log("BG: 'fetchFullAcademicData' action started. Tab ID:", request.tabId);
             let studentEvaluationPageUrl;
             let initialHtmlForYears;
-            let htmlWithSubjects; // This will be like html_content3
+            let htmlWithSubjects;
 
             let selectedYear = null, allYears = [];
             let selectedSemester = null, semestersForSelectedYear = [];
             let subjectsForSelectedSemester = [];
-            let csrfToken = null; // Placeholder
+            let csrfToken = null;
 
             try {
                 if (!request.tabId) throw new Error("Tab ID missing.");
                 const currentTab = await chrome.tabs.get(request.tabId);
                 if (!currentTab || !currentTab.url) throw new Error("Could not get tab info.");
 
-                // Check login status first
-                const isLoggedIn = await checkLoginStatus(request.tabId);
-                if (!isLoggedIn) {
-                    throw new Error("User is not logged in to UNEC cabinet. Please log in first.");
+                // Ensure content script is ready before proceeding
+                const isReady = await ensureContentScriptReady(request.tabId);
+                if (!isReady) {
+                    const injected = await injectContentScriptIfNeeded(request.tabId);
+                    if (!injected) {
+                        throw new Error("Content script is not available. Please refresh the page and try again.");
+                    }
                 }
 
                 // 1. Get Initial Page HTML (for Years and potential CSRF)
@@ -360,6 +401,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // Get current tab ID
                 const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                 if (!currentTab?.id) throw new Error("Could not get current tab");
+                
+                // Ensure content script is ready
+                const isReady = await ensureContentScriptReady(currentTab.id);
+                if (!isReady) {
+                    const injected = await injectContentScriptIfNeeded(currentTab.id);
+                    if (!injected) {
+                        throw new Error("Content script is not available. Please refresh the page and try again.");
+                    }
+                }
                 
                 const result = await fetchExamResults(currentTab.id);
                 sendResponse(result);

@@ -36,18 +36,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep the message channel open for async response
     }
     
-    if (request.action === "checkLoginStatus") {
-        // Check if user is logged in by looking for login indicators
-        const isLoggedIn = !window.location.href.includes('/login') && 
-                          (document.querySelector('.user-info') || 
-                           document.querySelector('.sidebar-menu') ||
-                           document.querySelector('#user-menu'));
-        
-        sendResponse({ 
-            success: true, 
-            isLoggedIn: isLoggedIn,
-            currentUrl: window.location.href
-        });
+    if (request.action === "ping") {
+        sendResponse({ success: true, message: "Content script is ready" });
         return true;
     }
 });
+
+// Signal that content script is ready
+chrome.runtime.sendMessage({ action: "contentScriptReady", url: window.location.href })
+    .catch(() => {
+        // Ignore errors if background script isn't ready yet
+    });

@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "offscreen"
+    "offscreen",
+    "scripting"
   ],
   "host_permissions": [
     "https://kabinet.unec.edu.az/*"

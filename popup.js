@@ -113,8 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.error("POPUP: Error in click handler:", err);
-            if (err.message.includes("not logged in")) {
-                showError("Please log in to UNEC cabinet first, then try again.");
+            if (err.message.includes("Content script") || err.message.includes("refresh the page")) {
+                showError("İçerik skripti problemi. Səhifəni yeniləyib təkrar cəhd edin.");
             } else {
                 showError(`POPUP: Client-side error: ${err.message}`);
             }
@@ -255,8 +255,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("POPUP: Error fetching exam results:", error);
-            if (error.message.includes("not logged in")) {
-                showError("Please log in to UNEC cabinet first, then try again.");
+            if (error.message.includes("Content script") || error.message.includes("refresh the page")) {
+                showError("İçerik skripti problemi. Səhifəni yeniləyib təkrar cəhd edin.");
             } else {
                 showError(`Error: ${error.message}`);
             }
