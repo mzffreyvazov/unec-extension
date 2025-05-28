@@ -117,6 +117,66 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 };
                 responsePayload.success = true;
                 console.log("OFFSCREEN: Evaluation details extracted:", responsePayload.data);
+            } else if (task === 'extractExamYears') {
+                const yearOptionsElements = doc.querySelectorAll('#Evaluation_eyear option');
+                let years = [];
+                if (yearOptionsElements && yearOptionsElements.length > 0) {
+                    years = Array.from(yearOptionsElements)
+                        .filter(opt => opt.value && opt.value.trim() !== "")
+                        .map(opt => ({ value: opt.value, text: opt.textContent.trim() }))
+                        .sort((a, b) => { const yA = parseInt(a.text.split(' - ')[0]), yB = parseInt(b.text.split(' - ')[0]); return yB - yA; });
+                }
+                responsePayload.data = years; responsePayload.success = true;
+                console.log("OFFSCREEN: Exam years extracted count:", years.length);
+            } else if (task === 'extractExamSemesters') {
+                const semesterOptionsElements = doc.querySelectorAll('option');
+                let semesters = [];
+                if (semesterOptionsElements && semesterOptionsElements.length > 0) {
+                    semesters = Array.from(semesterOptionsElements)
+                        .filter(opt => opt.value && opt.value.trim() !== "")
+                        .map(opt => ({ value: opt.value, text: opt.textContent.trim() }));
+                }
+                responsePayload.data = semesters; responsePayload.success = true;
+                console.log("OFFSCREEN: Exam semesters extracted count:", semesters.length);
+            } else if (task === 'extractExamResults') {
+                const examRows = doc.querySelectorAll('#eresults-grid tbody tr');
+                let examResults = [];
+                if (examRows && examRows.length > 0) {
+                    examRows.forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 12) {
+                            const subjectCell = cells[3]; // "Fənn" column
+                            const examScoreCell = cells[10]; // "İmtahan balı" column
+                            const examTypeCell = cells[4]; // "İmtahan növü" column
+                            const examDateCell = cells[6]; // "Tarix" column
+
+                            if (subjectCell && examScoreCell) {
+                                let subjectName = subjectCell.textContent?.trim();
+                                // Extract just the subject name (before the <br/> or course code)
+                                if (subjectName) {
+                                    const parts = subjectName.split('\n');
+                                    subjectName = parts[0].trim().replace(/^\d+\s+/, ''); // Remove leading numbers and spaces
+                                }
+
+                                const examScore = examScoreCell.textContent?.trim();
+                                const examType = examTypeCell?.textContent?.trim();
+                                const examDate = examDateCell?.textContent?.trim();
+
+                                if (subjectName && examScore && examScore !== '&nbsp;') {
+                                    examResults.push({
+                                        subject: subjectName,
+                                        score: examScore,
+                                        type: examType || 'N/A',
+                                        date: examDate || 'N/A'
+                                    });
+                                }
+                            }
+                        }
+                    });
+                }
+                responsePayload.data = examResults;
+                responsePayload.success = true;
+                console.log("OFFSCREEN: Exam results extracted count:", examResults.length);
             } else {
                 throw new Error(`Unknown parsing task: ${task}`);
             }

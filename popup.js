@@ -2,6 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const loadDataBtn = document.getElementById('loadDataBtn');
     const fetchAttendanceBtn = document.getElementById('fetchAttendanceBtn');
+    const loadExamResultsBtn = document.getElementById('loadExamResultsBtn');
     const loadingDiv = document.getElementById('loading');
     const attendanceLoadingDiv = document.getElementById('attendanceLoading');
     const errorDiv = document.getElementById('error');
@@ -15,6 +16,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const subjectsContainer = document.getElementById('subjects-container'); // Added
     const subjectsList = document.getElementById('subjectsList');       // Added
+
+    const examResultsContainer = document.getElementById('exam-results-container');
+    const examSelectedYearText = document.getElementById('examSelectedYearText');
+    const examSelectedSemesterText = document.getElementById('examSelectedSemesterText');
+    const examResultsLoading = document.getElementById('examResultsLoading');
+    const examResultsList = document.getElementById('examResultsList');
     
     // Store subjects data globally for attendance fetching
     let currentSubjects = [];
@@ -25,9 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
         errorDiv.style.display = 'none';
         selectedYearContainer.style.display = 'none';
         semestersContainer.style.display = 'none';
-        subjectsContainer.style.display = 'none'; // Added
+        subjectsContainer.style.display = 'none';
         semestersList.innerHTML = '';
-        subjectsList.innerHTML = '';              // Added
+        subjectsList.innerHTML = '';
         loadDataBtn.disabled = true;
 
         try {
@@ -37,10 +44,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 resetButton();
                 return;
             }
-            // Action name remains the same, background will do more steps
-            const actionToDispatch = "fetchFullAcademicData"; // Updated action name for clarity
-            console.log(`POPUP: Sending '${actionToDispatch}' to background. Tab ID:`, currentTab.id);
+            
+            // Check if we're on the right domain
+            if (!currentTab.url.includes('kabinet.unec.edu.az')) {
+                showError("Please navigate to UNEC cabinet (kabinet.unec.edu.az) first.");
+                resetButton();
+                return;
+            }
 
+            const actionToDispatch = "fetchFullAcademicData";
+            console.log(`POPUP: Sending '${actionToDispatch}' to background. Tab ID:`, currentTab.id);
 
             const response = await chrome.runtime.sendMessage({
                 action: actionToDispatch,
@@ -100,7 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.error("POPUP: Error in click handler:", err);
-            showError(`POPUP: Client-side error: ${err.message}`);
+            if (err.message.includes("not logged in")) {
+                showError("Please log in to UNEC cabinet first, then try again.");
+            } else {
+                showError(`POPUP: Client-side error: ${err.message}`);
+            }
         } finally {
             loadingDiv.style.display = 'none';
             resetButton();
@@ -200,6 +217,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // Keep the manual fetch button for re-fetching if needed
     fetchAttendanceBtn.addEventListener('click', fetchAttendanceData);
 
+    loadExamResultsBtn.addEventListener('click', async () => {
+        console.log("POPUP: 'Load Exam Results' button clicked.");
+        examResultsLoading.style.display = 'block';
+        errorDiv.style.display = 'none';
+        examResultsContainer.style.display = 'none';
+        loadExamResultsBtn.disabled = true;
+
+        try {
+            // Check current tab
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!currentTab?.url.includes('kabinet.unec.edu.az')) {
+                showError("Please navigate to UNEC cabinet (kabinet.unec.edu.az) first.");
+                return;
+            }
+
+            const response = await chrome.runtime.sendMessage({
+                action: "fetchExamResults"
+            });
+
+            console.log("POPUP: Response from background for fetchExamResults:", response);
+
+            if (response.success && response.data) {
+                const { selectedYear, selectedSemester, examResults } = response.data;
+
+                examSelectedYearText.textContent = selectedYear.text;
+                examSelectedSemesterText.textContent = selectedSemester.text;
+
+                if (examResults && examResults.length > 0) {
+                    displayExamResults(examResults);
+                    examResultsContainer.style.display = 'block';
+                } else {
+                    showError("No exam results found for the selected year/semester.");
+                }
+            } else {
+                showError(response.error || "Failed to fetch exam results");
+            }
+        } catch (error) {
+            console.error("POPUP: Error fetching exam results:", error);
+            if (error.message.includes("not logged in")) {
+                showError("Please log in to UNEC cabinet first, then try again.");
+            } else {
+                showError(`Error: ${error.message}`);
+            }
+        } finally {
+            examResultsLoading.style.display = 'none';
+            loadExamResultsBtn.disabled = false;
+        }
+    });
+
     function showError(message) {
         console.log("POPUP: Displaying error - ", message);
         errorDiv.textContent = message;
@@ -241,5 +307,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 listElement.appendChild(listItem);
             });
         }
+    }
+
+    function displayExamResults(examResults) {
+        examResultsList.innerHTML = '';
+        
+        examResults.forEach(result => {
+            const listItem = document.createElement('li');
+            listItem.className = 'exam-result-item';
+            
+            const subjectSpan = document.createElement('span');
+            subjectSpan.className = 'exam-subject-name';
+            subjectSpan.textContent = result.subject;
+            
+            const detailsContainer = document.createElement('div');
+            detailsContainer.className = 'exam-details-container';
+            
+            const scoreSpan = document.createElement('span');
+            scoreSpan.className = 'exam-score';
+            scoreSpan.textContent = `Score: ${result.score}`;
+            
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'exam-type';
+            typeSpan.textContent = result.type;
+            
+            detailsContainer.appendChild(scoreSpan);
+            detailsContainer.appendChild(typeSpan);
+            
+            listItem.appendChild(subjectSpan);
+            listItem.appendChild(detailsContainer);
+            
+            examResultsList.appendChild(listItem);
+        });
     }
 });

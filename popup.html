@@ -9,6 +9,7 @@
     <div class="container">
         <h1>UNEC Data Viewer</h1>
         <button id="loadDataBtn">Load Academic Data</button>
+        <button id="loadExamResultsBtn">Load Exam Results</button>
         <div id="loading" style="display:none;">Loading...</div>
         <div id="error" style="display:none; color: red;"></div>
 
@@ -29,6 +30,14 @@
             <button id="fetchAttendanceBtn" style="display:none;">Refresh Evaluation Data</button>
             <div id="attendanceLoading" style="display:none;">Loading evaluation data...</div>
             <ul id="subjectsList"></ul>
+        </div>
+
+        <div id="exam-results-container" style="display:none;">
+            <h2>Exam Results:</h2>
+            <p><strong>Year:</strong> <span id="examSelectedYearText"></span></p>
+            <p><strong>Semester:</strong> <span id="examSelectedSemesterText"></span></p>
+            <div id="examResultsLoading" style="display:none;">Loading exam results...</div>
+            <ul id="examResultsList"></ul>
         </div>
 
     </div>

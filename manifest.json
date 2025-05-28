@@ -11,6 +11,13 @@
   "host_permissions": [
     "https://kabinet.unec.edu.az/*"
   ],
+  "content_scripts": [
+    {
+      "matches": ["https://kabinet.unec.edu.az/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html"
   },
