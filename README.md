@@ -1,0 +1,1 @@
+Tez-tez istifadə olunan məlumatları bir kliklə görmək üçün
