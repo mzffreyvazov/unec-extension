@@ -8,6 +8,7 @@ let creatingOffscreenPromise = null;
 // Storage utilities - moved to top to avoid hoisting issues
 const STORAGE_KEYS = {
     ACADEMIC_DATA: 'academic_data',
+    ALL_YEARS: 'all_years',
     SUBJECT_EVALUATIONS: 'subject_evaluations',
     SEMINAR_GRADES: 'seminar_grades',
     ABSENCE_COUNTS: 'absence_counts',
@@ -286,6 +287,29 @@ async function fetchExamResults(tabId) {
     }
 }
 
+async function fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue) {
+    console.log("BG: Fetching exam results for specific year/semester:", yearValue, semesterValue);
+    
+    try {
+        const eresultsUrl = new URL('eresults', BASE_AZ_URL).href;
+        const examResultsUrl = `${eresultsUrl}?eyear=${yearValue}&term=${semesterValue}&examType=`;
+        const resultsHtml = await fetchViaContentScript(tabId, examResultsUrl);
+        
+        const examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
+        
+        return {
+            success: true,
+            data: {
+                examResults
+            }
+        };
+        
+    } catch (error) {
+        console.error("BG: Error fetching exam results for year/semester:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Helper function to ensure content script is ready
 async function ensureContentScriptReady(tabId, maxRetries = 3) {
     for (let i = 0; i < maxRetries; i++) {
@@ -470,6 +494,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     const isCacheStillValid = await checkCacheValidity(STORAGE_KEYS.LAST_FETCH_TIME);
                     if (isCacheStillValid) {
                         const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
+                        const cachedAllYears = await getFromStorage(STORAGE_KEYS.ALL_YEARS);
                         const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
                         const cachedSeminarGrades = await getFromStorage(STORAGE_KEYS.SEMINAR_GRADES);
                         const cachedAbsenceCounts = await getFromStorage(STORAGE_KEYS.ABSENCE_COUNTS);
@@ -479,6 +504,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             sendResponse({ 
                                 success: true, 
                                 data: cachedData,
+                                allYears: cachedAllYears || [],
                                 subjectEvaluations: cachedSubjectEvals || {},
                                 seminarGrades: cachedSeminarGrades || {},
                                 absenceCounts: cachedAbsenceCounts || {}
@@ -663,13 +689,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // Save academic data, subject evaluations, seminar grades, and absence counts to cache
                 await saveToStorage(STORAGE_KEYS.ACADEMIC_DATA, freshAcademicData);
+                await saveToStorage(STORAGE_KEYS.ALL_YEARS, allYears);
                 await saveToStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS, subjectEvaluations);
                 await saveToStorage(STORAGE_KEYS.SEMINAR_GRADES, seminarGrades);
                 await saveToStorage(STORAGE_KEYS.ABSENCE_COUNTS, absenceCounts);
                 await saveToStorage(STORAGE_KEYS.LAST_FETCH_TIME, Date.now());
 
                 sendResponse({ 
-                    data: freshAcademicData, 
+                    data: freshAcademicData,
+                    allYears: allYears,
                     subjectEvaluations: subjectEvaluations,
                     seminarGrades: seminarGrades,
                     absenceCounts: absenceCounts,
@@ -735,6 +763,91 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ ...result, fromCache: false });
             } catch (error) {
                 console.error("BG: Error in fetchExamResults handler:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    else if (request.action === "fetchSemestersForYear") {
+        (async () => {
+            try {
+                console.log("BG: fetchSemestersForYear for year:", request.yearValue);
+                
+                // Use provided tabId or get current tab
+                const tabId = request.tabId || (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+                if (!tabId) {
+                    throw new Error("No tab ID available");
+                }
+                
+                // CSRF token is not needed for this request
+                const csrfToken = null;
+                
+                const semesters = await fetchSemestersForYearPOST(request.yearValue, csrfToken, tabId);
+                sendResponse({ success: true, semesters: semesters });
+            } catch (error) {
+                console.error("BG: Error fetching semesters:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    else if (request.action === "fetchDataForYearAndSemester") {
+        (async () => {
+            try {
+                console.log("BG: fetchDataForYearAndSemester - year:", request.yearValue, "semester:", request.semesterValue);
+                
+                const studentEvaluationPageUrl = new URL('studentEvaluation', BASE_AZ_URL).href;
+                const urlForSubjects = `${studentEvaluationPageUrl}?eduYear=${request.yearValue}&eduSemester=${request.semesterValue}`;
+                
+                const htmlWithSubjects = await fetchViaContentScript(request.tabId, urlForSubjects);
+                const subjects = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
+                
+                // Extract lesson types
+                const lessonTypes = await extractLessonTypesFromHTML(htmlWithSubjects);
+                const seminarLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('seminar') && !lt.text.toLowerCase().includes('distant'));
+                const muhazireLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('mühazirə') || lt.text.toLowerCase().includes('muhazire'));
+                
+                // Fetch evaluations, seminar grades, and absence counts
+                let subjectEvaluations = {};
+                let seminarGrades = {};
+                let absenceCounts = {};
+                
+                if (subjects && subjects.length > 0) {
+                    subjectEvaluations = await fetchAllSubjectEvaluations(subjects, request.tabId);
+                    if (seminarLessonType) {
+                        seminarGrades = await fetchAllSeminarGrades(subjects, seminarLessonType.value, request.tabId);
+                    }
+                    absenceCounts = await countAllAbsences(subjects, seminarLessonType?.value, muhazireLessonType?.value, request.tabId);
+                }
+                
+                const data = {
+                    selectedYear: { value: request.yearValue },
+                    selectedSemester: { value: request.semesterValue },
+                    subjects: subjects
+                };
+                
+                sendResponse({ 
+                    data: data,
+                    subjectEvaluations: subjectEvaluations,
+                    seminarGrades: seminarGrades,
+                    absenceCounts: absenceCounts
+                });
+            } catch (error) {
+                console.error("BG: Error fetching data for year/semester:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    else if (request.action === "fetchExamResultsForYearAndSemester") {
+        (async () => {
+            try {
+                console.log("BG: fetchExamResultsForYearAndSemester - year:", request.yearValue, "semester:", request.semesterValue);
+                
+                const result = await fetchExamResultsForYearAndSemester(request.tabId, request.yearValue, request.semesterValue);
+                sendResponse(result);
+            } catch (error) {
+                console.error("BG: Error in fetchExamResultsForYearAndSemester handler:", error);
                 sendResponse({ success: false, error: error.message });
             }
         })();

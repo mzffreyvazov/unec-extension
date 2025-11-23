@@ -67,6 +67,35 @@ header {
     padding: 15px 15px 10px 15px;
 }
 
+.filters-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.filter-select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    background: var(--white);
+    color: var(--text-dark);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.filter-select:hover {
+    border-color: var(--unec-green);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--unec-green);
+    box-shadow: 0 0 0 2px rgba(108, 185, 86, 0.1);
+}
+
 .tab-group {
     display: flex;
     background: #e4e4e4;
@@ -211,11 +240,24 @@ header {
     display: flex;
     gap: 6px;
     overflow-x: auto;
-    padding-bottom: 2px;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #ccc #f8f9fa;
 }
-.seminar-list::-webkit-scrollbar { display: none; }
+.seminar-list::-webkit-scrollbar { 
+    height: 6px;
+}
+.seminar-list::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 3px;
+}
+.seminar-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+.seminar-list::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
 
 .seminar-badge {
     background-color: var(--badge-bg);

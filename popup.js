@@ -5,9 +5,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const subjectsList = document.getElementById('subjectsList');
     const examResultsList = document.getElementById('examResultsList');
+    const yearSelect = document.getElementById('yearSelect');
+    const semesterSelect = document.getElementById('semesterSelect');
     
     // Store subjects data globally
     let currentSubjects = [];
+    let allYears = [];
+    let allSemesters = [];
+    let currentYear = null;
+    let currentSemester = null;
 
     // Try to load cached data when popup opens
     async function loadCachedDataOnOpen() {
@@ -22,6 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (academicResponse && academicResponse.success && academicResponse.data) {
                 console.log("POPUP: Found cached academic data, displaying it");
+                
+                // Populate year dropdown if we have years
+                if (academicResponse.allYears && academicResponse.allYears.length > 0) {
+                    allYears = academicResponse.allYears;
+                    populateYearDropdown(academicResponse.allYears, academicResponse.data.selectedYear);
+                }
+                
                 displayAcademicData(
                     academicResponse.data, 
                     academicResponse.subjectEvaluations || {}, 
@@ -45,6 +58,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         
                         if (response && response.data) {
+                            // Populate year dropdown if we have years
+                            if (response.allYears && response.allYears.length > 0) {
+                                allYears = response.allYears;
+                                populateYearDropdown(response.allYears, response.data.selectedYear);
+                            }
+                            
                             displayAcademicData(
                                 response.data, 
                                 response.subjectEvaluations || {}, 
@@ -97,7 +116,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Function to display academic data with subject evaluations
     function displayAcademicData(data, subjectEvaluations = {}, seminarGrades = {}, absenceCounts = {}, fromCache = false) {
-        const { subjects } = data;
+        const { subjects, selectedYear, selectedSemester, semesters } = data;
+
+        // Store year and semester info
+        if (selectedYear) {
+            currentYear = selectedYear;
+        }
+        if (selectedSemester) {
+            currentSemester = selectedSemester;
+        }
+        if (semesters) {
+            allSemesters = semesters;
+            populateSemesterDropdown(semesters, selectedSemester);
+        }
 
         if (subjects && Array.isArray(subjects) && subjects.length > 0) {
             currentSubjects = subjects;
@@ -105,6 +136,149 @@ document.addEventListener('DOMContentLoaded', () => {
             displaySubjectCards(subjects, subjectEvaluations, seminarGrades, absenceCounts);
         }
     }
+
+    // Populate year dropdown
+    function populateYearDropdown(years, selectedYear) {
+        yearSelect.innerHTML = '<option value="">İl seçin...</option>';
+        years.forEach(year => {
+            const option = document.createElement('option');
+            option.value = year.value;
+            option.textContent = year.text;
+            if (selectedYear && year.value === selectedYear.value) {
+                option.selected = true;
+            }
+            yearSelect.appendChild(option);
+        });
+    }
+
+    // Populate semester dropdown
+    function populateSemesterDropdown(semesters, selectedSemester) {
+        semesterSelect.innerHTML = '<option value="">Semestr seçin...</option>';
+        semesters.forEach(semester => {
+            const option = document.createElement('option');
+            option.value = semester.value;
+            option.textContent = semester.text;
+            if (selectedSemester && semester.value === selectedSemester.value) {
+                option.selected = true;
+            }
+            semesterSelect.appendChild(option);
+        });
+    }
+
+    // Handle year selection change
+    yearSelect.addEventListener('change', async () => {
+        const selectedYearValue = yearSelect.value;
+        if (!selectedYearValue) return;
+
+        loadingDiv.style.display = 'block';
+        loadingDiv.textContent = 'Semestrlər yüklənir...';
+        
+        // Clear semester dropdown while loading
+        semesterSelect.innerHTML = '<option value="">Yüklənir...</option>';
+        semesterSelect.disabled = true;
+
+        try {
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!currentTab?.url.includes('kabinet.unec.edu.az')) {
+                showError("Zəhmət olmasa kabinet.unec.edu.az səhifəsinə keçin");
+                loadingDiv.style.display = 'none';
+                semesterSelect.disabled = false;
+                return;
+            }
+
+            const response = await chrome.runtime.sendMessage({
+                action: "fetchSemestersForYear",
+                yearValue: selectedYearValue,
+                tabId: currentTab.id
+            });
+
+            if (response && response.success && response.semesters) {
+                allSemesters = response.semesters;
+                populateSemesterDropdown(response.semesters, null);
+                semesterSelect.disabled = false;
+                
+                // Auto-select first semester WITHOUT triggering data fetch
+                if (response.semesters.length > 0) {
+                    const firstSemester = response.semesters.find(s => s.text.includes("II semestr") || s.text.includes("Payız")) || response.semesters[0];
+                    semesterSelect.value = firstSemester.value;
+                }
+                
+                loadingDiv.style.display = 'none';
+            } else {
+                semesterSelect.disabled = false;
+                showError("Semestrlər tapılmadı");
+                loadingDiv.style.display = 'none';
+            }
+        } catch (error) {
+            console.error("POPUP: Error fetching semesters:", error);
+            showError("Semestrlər yüklənərkən xəta baş verdi");
+            semesterSelect.disabled = false;
+            loadingDiv.style.display = 'none';
+        }
+    });
+
+    // Handle semester selection change
+    semesterSelect.addEventListener('change', async () => {
+        const selectedYearValue = yearSelect.value;
+        const selectedSemesterValue = semesterSelect.value;
+        
+        if (!selectedYearValue || !selectedSemesterValue) return;
+
+        // Clear previous data
+        subjectsList.innerHTML = '';
+        document.getElementById('subjects-count').textContent = 'Fənlər';
+        examResultsList.innerHTML = '';
+        document.getElementById('exams-count').textContent = 'Nəticələr';
+        
+        loadingDiv.style.display = 'block';
+        loadingDiv.textContent = 'Məlumatlar yüklənir...';
+
+        try {
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!currentTab?.url.includes('kabinet.unec.edu.az')) {
+                showError("Zəhmət olmasa kabinet.unec.edu.az səhifəsinə keçin");
+                return;
+            }
+
+            const response = await chrome.runtime.sendMessage({
+                action: "fetchDataForYearAndSemester",
+                tabId: currentTab.id,
+                yearValue: selectedYearValue,
+                semesterValue: selectedSemesterValue
+            });
+
+            if (response && response.data) {
+                displayAcademicData(
+                    response.data,
+                    response.subjectEvaluations || {},
+                    response.seminarGrades || {},
+                    response.absenceCounts || {}
+                );
+            }
+            
+            // Also fetch exam results for this year/semester
+            try {
+                const examResponse = await chrome.runtime.sendMessage({
+                    action: "fetchExamResultsForYearAndSemester",
+                    tabId: currentTab.id,
+                    yearValue: selectedYearValue,
+                    semesterValue: selectedSemesterValue
+                });
+                
+                if (examResponse && examResponse.success && examResponse.data) {
+                    displayExamData(examResponse.data);
+                }
+            } catch (examError) {
+                console.error("POPUP: Error fetching exam results:", examError);
+                // Don't show error to user, just log it
+            }
+        } catch (error) {
+            console.error("POPUP: Error fetching data:", error);
+            showError("Məlumatlar yüklənərkən xəta baş verdi");
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    });
 
     // Function to display subject cards with new design
     function displaySubjectCards(subjects, subjectEvaluations, seminarGrades, absenceCounts) {
@@ -175,9 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const seminarResult = seminarGrades[subject.id];
             let seminarBadges = '';
             if (seminarResult?.success && seminarResult?.grades && seminarResult.grades.length > 0) {
-                // Show latest 3 seminar grades
-                const latestGrades = seminarResult.grades.slice(0, 3);
-                seminarBadges = latestGrades.map(grade => 
+                // Show all seminar grades
+                seminarBadges = seminarResult.grades.map(grade => 
                     `<div class="seminar-badge">${grade.grade} <span class="seminar-date">(${grade.date})</span></div>`
                 ).join('');
             } else {
