@@ -258,6 +258,32 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 responsePayload.data = seminarGrades;
                 responsePayload.success = true;
                 console.log("OFFSCREEN: Seminar grades extracted count:", seminarGrades.length);
+            } else if (task === 'countAbsences') {
+                const evaluationTable = doc.querySelector('#evaluation table');
+                let absenceCount = 0;
+                
+                if (evaluationTable) {
+                    const rows = evaluationTable.querySelectorAll('tbody tr');
+                    if (rows && rows.length > 0) {
+                        rows.forEach(row => {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length >= 4) {
+                                const grade = cells[3]?.textContent?.trim();
+                                
+                                // Count "q/b" entries
+                                if (grade && grade.toLowerCase() === 'q/b') {
+                                    absenceCount++;
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    console.warn("OFFSCREEN: #evaluation table not found for absence counting.");
+                }
+                
+                responsePayload.data = absenceCount;
+                responsePayload.success = true;
+                console.log("OFFSCREEN: Absences counted (q/b):", absenceCount);
             } else {
                 throw new Error(`Unknown parsing task: ${task}`);
             }

@@ -22,7 +22,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (academicResponse && academicResponse.success && academicResponse.data) {
                 console.log("POPUP: Found cached academic data, displaying it");
-                displayAcademicData(academicResponse.data, academicResponse.subjectEvaluations || {}, academicResponse.seminarGrades || {}, true);
+                displayAcademicData(
+                    academicResponse.data, 
+                    academicResponse.subjectEvaluations || {}, 
+                    academicResponse.seminarGrades || {},
+                    academicResponse.absenceCounts || {},
+                    true
+                );
             } else {
                 console.log("POPUP: No cached academic data found");
                 loadingDiv.style.display = 'block';
@@ -39,7 +45,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         
                         if (response && response.data) {
-                            displayAcademicData(response.data, response.subjectEvaluations || {}, response.seminarGrades || {});
+                            displayAcademicData(
+                                response.data, 
+                                response.subjectEvaluations || {}, 
+                                response.seminarGrades || {},
+                                response.absenceCounts || {}
+                            );
                         }
                     }
                 } catch (err) {
@@ -85,18 +96,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to display academic data with subject evaluations
-    function displayAcademicData(data, subjectEvaluations = {}, seminarGrades = {}, fromCache = false) {
+    function displayAcademicData(data, subjectEvaluations = {}, seminarGrades = {}, absenceCounts = {}, fromCache = false) {
         const { subjects } = data;
 
         if (subjects && Array.isArray(subjects) && subjects.length > 0) {
             currentSubjects = subjects;
             document.getElementById('subjects-count').textContent = `Fənlər (${subjects.length})`;
-            displaySubjectCards(subjects, subjectEvaluations, seminarGrades);
+            displaySubjectCards(subjects, subjectEvaluations, seminarGrades, absenceCounts);
         }
     }
 
     // Function to display subject cards with new design
-    function displaySubjectCards(subjects, subjectEvaluations, seminarGrades) {
+    function displaySubjectCards(subjects, subjectEvaluations, seminarGrades, absenceCounts) {
         subjectsList.innerHTML = '';
         
         // Sort subjects: high qaib (>20%) first, then others
@@ -125,6 +136,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const qaibPercent = result?.success && result?.details?.attendancePercentage !== null
                 ? result.details.attendancePercentage + '%'
                 : '-';
+            
+            // Get absence count (q/b count)
+            const absenceResult = absenceCounts[subject.id];
+            let qaibSayi = '-';
+            
+            if (absenceResult?.success && absenceResult?.totalCount !== undefined) {
+                const currentAbsences = absenceResult.totalCount;
+                
+                // Calculate total allowed absences based on 25% threshold
+                let totalAllowed = currentAbsences;
+                
+                if (result?.success && result?.details?.attendancePercentage !== null) {
+                    const qaibPercValue = parseFloat(result.details.attendancePercentage);
+                    
+                    if (!isNaN(qaibPercValue) && qaibPercValue > 0 && currentAbsences > 0) {
+                        // Calculate percentage per absence: qaibPercValue / currentAbsences
+                        const percentPerAbsence = qaibPercValue / currentAbsences;
+                        
+                        // Calculate total allowed (25% threshold / percent per absence)
+                        totalAllowed = Math.floor(25 / percentPerAbsence);
+                    }
+                }
+                
+                qaibSayi = `${currentAbsences}/${totalAllowed}`;
+            }
             
             // Check if qaib > 20%
             let qaibClass = '';
@@ -170,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Qaib Sayı</span>
-                            <span class="stat-value">-</span>
+                            <span class="stat-value">${qaibSayi}</span>
                         </div>
                     </div>
                 </div>

@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
     ACADEMIC_DATA: 'academic_data',
     SUBJECT_EVALUATIONS: 'subject_evaluations',
     SEMINAR_GRADES: 'seminar_grades',
+    ABSENCE_COUNTS: 'absence_counts',
     EXAM_RESULTS: 'exam_results',
     LAST_FETCH_TIME: 'last_fetch_time',
     LAST_SUBJECT_EVAL_FETCH_TIME: 'last_subject_eval_fetch_time',
@@ -189,6 +190,36 @@ async function fetchSeminarGradesForSubject(subjectId, eduFormId, lessonTypeValu
     } catch (error) {
         console.error(`BG: Error fetching seminar grades for subject ${subjectId}:`, error);
         return { success: false, error: error.message, grades: [] };
+    }
+}
+async function countAbsencesForSubject(subjectId, eduFormId, lessonTypeValue, tabId) {
+    console.log(`BG: Counting absences for subject ID: ${subjectId}, lessonType: ${lessonTypeValue}`);
+    const evalPopupUrl = new URL('studentEvaluationPopup', BASE_AZ_URL).href;
+    
+    const formData = new URLSearchParams();
+    formData.append('id', subjectId);
+    formData.append('lessonType', lessonTypeValue);
+    formData.append('edu_form_id', eduFormId || '450');
+    
+    const reqOpts = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData.toString()
+    };
+    
+    try {
+        const popupHtml = await fetchViaContentScript(tabId, evalPopupUrl, reqOpts);
+        const absenceCount = await parseHTMLViaOffscreen(popupHtml, 'countAbsences');
+        return { 
+            success: true, 
+            count: absenceCount || 0
+        };
+    } catch (error) {
+        console.error(`BG: Error counting absences for subject ${subjectId}:`, error);
+        return { success: false, error: error.message, count: 0 };
     }
 }
 async function fetchExamResults(tabId) {
@@ -378,6 +409,52 @@ async function fetchAllSeminarGrades(subjects, lessonTypeValue, tabId) {
     return results;
 }
 
+// New function to count absences for all subjects (Seminar + Mühazirə)
+async function countAllAbsences(subjects, seminarTypeValue, muhazireTypeValue, tabId) {
+    console.log("BG: Counting absences for all subjects (Seminar + Mühazirə)");
+    const results = {};
+    
+    for (const subject of subjects) {
+        if (!subject.id || !subject.eduFormId) {
+            console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
+            results[subject.id || `unknown-${Math.random()}`] = { 
+                success: false, 
+                error: "Missing subject id or eduFormId", 
+                totalCount: 0
+            };
+            continue;
+        }
+        
+        console.log(`BG: Counting absences for subject: ${subject.name} (ID: ${subject.id})`);
+        let totalCount = 0;
+        
+        // Count absences in Seminar
+        if (seminarTypeValue) {
+            const seminarResult = await countAbsencesForSubject(subject.id, subject.eduFormId, seminarTypeValue, tabId);
+            if (seminarResult.success) {
+                totalCount += seminarResult.count;
+            }
+            await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+        }
+        
+        // Count absences in Mühazirə
+        if (muhazireTypeValue) {
+            const muhazireResult = await countAbsencesForSubject(subject.id, subject.eduFormId, muhazireTypeValue, tabId);
+            if (muhazireResult.success) {
+                totalCount += muhazireResult.count;
+            }
+            await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+        }
+        
+        results[subject.id] = { 
+            success: true, 
+            totalCount: totalCount
+        };
+    }
+    
+    return results;
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "contentScriptReady") {
         console.log("BG: Content script ready on:", request.url);
@@ -395,14 +472,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
                         const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
                         const cachedSeminarGrades = await getFromStorage(STORAGE_KEYS.SEMINAR_GRADES);
+                        const cachedAbsenceCounts = await getFromStorage(STORAGE_KEYS.ABSENCE_COUNTS);
                         
                         if (cachedData) {
-                            console.log("BG: Returning cached academic data with subject evaluations and seminar grades");
+                            console.log("BG: Returning cached academic data with subject evaluations, seminar grades, and absence counts");
                             sendResponse({ 
                                 success: true, 
                                 data: cachedData,
                                 subjectEvaluations: cachedSubjectEvals || {},
-                                seminarGrades: cachedSeminarGrades || {}
+                                seminarGrades: cachedSeminarGrades || {},
+                                absenceCounts: cachedAbsenceCounts || {}
                             });
                             return;
                         }
@@ -445,13 +524,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
                         const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
                         const cachedSeminarGrades = await getFromStorage(STORAGE_KEYS.SEMINAR_GRADES);
+                        const cachedAbsenceCounts = await getFromStorage(STORAGE_KEYS.ABSENCE_COUNTS);
                         
                         if (cachedData) {
-                            console.log("BG: Using cached academic data with subject evaluations and seminar grades");
+                            console.log("BG: Using cached academic data with subject evaluations, seminar grades, and absence counts");
                             sendResponse({ 
                                 data: cachedData, 
                                 subjectEvaluations: cachedSubjectEvals || {},
                                 seminarGrades: cachedSeminarGrades || {},
+                                absenceCounts: cachedAbsenceCounts || {},
                                 fromCache: true 
                             });
                             return;
@@ -538,10 +619,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 subjectsForSelectedSemester = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
                 console.log(`BG: Subjects extracted for ${selectedSemester.text}:`, subjectsForSelectedSemester.length);
                 
-                // Extract lesson types to find Seminar option
+                // Extract lesson types to find Seminar and Mühazirə options
                 const lessonTypes = await extractLessonTypesFromHTML(htmlWithSubjects);
                 const seminarLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('seminar') && !lt.text.toLowerCase().includes('distant'));
-                console.log("BG: Lesson types found:", lessonTypes.length, "Seminar type:", seminarLessonType);
+                const muhazireLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('mühazirə') || lt.text.toLowerCase().includes('muhazire'));
+                console.log("BG: Lesson types found:", lessonTypes.length, "Seminar type:", seminarLessonType, "Mühazirə type:", muhazireLessonType);
 
                 const freshAcademicData = {
                     selectedYear,
@@ -565,17 +647,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     seminarGrades = await fetchAllSeminarGrades(subjectsForSelectedSemester, seminarLessonType.value, request.tabId);
                     console.log("BG: Seminar grades completed, keys:", Object.keys(seminarGrades));
                 }
+                
+                // 8. Count absences (q/b) for Seminar and Mühazirə
+                let absenceCounts = {};
+                if (subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
+                    console.log("BG: Counting absences for all subjects (Seminar + Mühazirə)");
+                    absenceCounts = await countAllAbsences(
+                        subjectsForSelectedSemester, 
+                        seminarLessonType?.value, 
+                        muhazireLessonType?.value, 
+                        request.tabId
+                    );
+                    console.log("BG: Absence counting completed, keys:", Object.keys(absenceCounts));
+                }
 
-                // Save academic data, subject evaluations, and seminar grades to cache
+                // Save academic data, subject evaluations, seminar grades, and absence counts to cache
                 await saveToStorage(STORAGE_KEYS.ACADEMIC_DATA, freshAcademicData);
                 await saveToStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS, subjectEvaluations);
                 await saveToStorage(STORAGE_KEYS.SEMINAR_GRADES, seminarGrades);
+                await saveToStorage(STORAGE_KEYS.ABSENCE_COUNTS, absenceCounts);
                 await saveToStorage(STORAGE_KEYS.LAST_FETCH_TIME, Date.now());
 
                 sendResponse({ 
                     data: freshAcademicData, 
                     subjectEvaluations: subjectEvaluations,
                     seminarGrades: seminarGrades,
+                    absenceCounts: absenceCounts,
                     fromCache: false 
                 });
 
