@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card-body">
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <span class="stat-label">Cari Q.</span>
+                            <span class="stat-label">Cari Qiymətləndirmə</span>
                             <span class="stat-value">${cariQ}</span>
                         </div>
                         <div class="stat-item">
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
                 <div class="card-footer">
-                    <span class="footer-label">Seminarlar</span>
+                    <span class="footer-label">Seminar Qiymətləri</span>
                     <div class="seminar-list">
                         ${seminarBadges}
                     </div>
