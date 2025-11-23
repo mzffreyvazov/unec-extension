@@ -51,6 +51,17 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 }
                 responsePayload.data = semesters; responsePayload.success = true;
                 console.log("OFFSCREEN: Semesters extracted count:", semesters.length);
+            } else if (task === 'extractLessonTypes') {
+                const lessonTypeOptions = doc.querySelectorAll('#lessonType option');
+                let lessonTypes = [];
+                if (lessonTypeOptions && lessonTypeOptions.length > 0) {
+                    lessonTypes = Array.from(lessonTypeOptions)
+                        .filter(opt => opt.value && opt.value.trim() !== "")
+                        .map(opt => ({ value: opt.value, text: opt.textContent.trim() }));
+                }
+                responsePayload.data = lessonTypes;
+                responsePayload.success = true;
+                console.log("OFFSCREEN: Lesson types extracted count:", lessonTypes.length);
             } else if (task === 'extractSubjects') {
                 const subjectRows = doc.querySelectorAll('#studentEvaluation-grid tbody tr:not(.empty)');
                 let subjects = [];
@@ -215,6 +226,38 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 responsePayload.data = examResults;
                 responsePayload.success = true;
                 console.log("OFFSCREEN: Exam results extracted count:", examResults.length);
+            } else if (task === 'extractSeminarGrades') {
+                const evaluationTable = doc.querySelector('#evaluation table');
+                let seminarGrades = [];
+                
+                if (evaluationTable) {
+                    const rows = evaluationTable.querySelectorAll('tbody tr');
+                    if (rows && rows.length > 0) {
+                        rows.forEach(row => {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length >= 4) {
+                                const date = cells[1]?.textContent?.trim();
+                                const topic = cells[2]?.textContent?.trim();
+                                const grade = cells[3]?.textContent?.trim();
+                                
+                                // Only include numeric grades (not "i/e" or "q/b" or empty)
+                                if (grade && /^\d+$/.test(grade)) {
+                                    seminarGrades.push({
+                                        date: date,
+                                        topic: topic,
+                                        grade: grade
+                                    });
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    console.warn("OFFSCREEN: #evaluation table not found for seminar grades extraction.");
+                }
+                
+                responsePayload.data = seminarGrades;
+                responsePayload.success = true;
+                console.log("OFFSCREEN: Seminar grades extracted count:", seminarGrades.length);
             } else {
                 throw new Error(`Unknown parsing task: ${task}`);
             }

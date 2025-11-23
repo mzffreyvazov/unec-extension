@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (academicResponse && academicResponse.success && academicResponse.data) {
                 console.log("POPUP: Found cached academic data, displaying it");
-                displayAcademicData(academicResponse.data, academicResponse.subjectEvaluations || {}, true);
+                displayAcademicData(academicResponse.data, academicResponse.subjectEvaluations || {}, academicResponse.seminarGrades || {}, true);
             } else {
                 console.log("POPUP: No cached academic data found");
                 loadingDiv.style.display = 'block';
@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         
                         if (response && response.data) {
-                            displayAcademicData(response.data, response.subjectEvaluations || {});
+                            displayAcademicData(response.data, response.subjectEvaluations || {}, response.seminarGrades || {});
                         }
                     }
                 } catch (err) {
@@ -85,18 +85,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to display academic data with subject evaluations
-    function displayAcademicData(data, subjectEvaluations = {}, fromCache = false) {
+    function displayAcademicData(data, subjectEvaluations = {}, seminarGrades = {}, fromCache = false) {
         const { subjects } = data;
 
         if (subjects && Array.isArray(subjects) && subjects.length > 0) {
             currentSubjects = subjects;
             document.getElementById('subjects-count').textContent = `Fənlər (${subjects.length})`;
-            displaySubjectCards(subjects, subjectEvaluations);
+            displaySubjectCards(subjects, subjectEvaluations, seminarGrades);
         }
     }
 
     // Function to display subject cards with new design
-    function displaySubjectCards(subjects, subjectEvaluations) {
+    function displaySubjectCards(subjects, subjectEvaluations, seminarGrades) {
         subjectsList.innerHTML = '';
         
         subjects.forEach(subject => {
@@ -120,6 +120,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!isNaN(qaibVal) && qaibVal > 20) {
                     qaibClass = ' danger';
                 }
+            }
+            
+            // Get seminar grades for this subject
+            const seminarResult = seminarGrades[subject.id];
+            let seminarBadges = '';
+            if (seminarResult?.success && seminarResult?.grades && seminarResult.grades.length > 0) {
+                // Show latest 3 seminar grades
+                const latestGrades = seminarResult.grades.slice(0, 3);
+                seminarBadges = latestGrades.map(grade => 
+                    `<div class="seminar-badge">${grade.grade} <span class="seminar-date">(${grade.date})</span></div>`
+                ).join('');
+            } else {
+                // Show placeholders if no grades
+                seminarBadges = `
+                    <div class="seminar-badge">-</div>
+                    <div class="seminar-badge">-</div>
+                    <div class="seminar-badge">-</div>
+                `;
             }
             
             card.innerHTML = `
@@ -146,9 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card-footer">
                     <span class="footer-label">Seminarlar</span>
                     <div class="seminar-list">
-                        <div class="seminar-badge">-</div>
-                        <div class="seminar-badge">-</div>
-                        <div class="seminar-badge">-</div>
+                        ${seminarBadges}
                     </div>
                 </div>
             `;

@@ -9,6 +9,7 @@ let creatingOffscreenPromise = null;
 const STORAGE_KEYS = {
     ACADEMIC_DATA: 'academic_data',
     SUBJECT_EVALUATIONS: 'subject_evaluations',
+    SEMINAR_GRADES: 'seminar_grades',
     EXAM_RESULTS: 'exam_results',
     LAST_FETCH_TIME: 'last_fetch_time',
     LAST_SUBJECT_EVAL_FETCH_TIME: 'last_subject_eval_fetch_time',
@@ -116,6 +117,14 @@ async function extractSubjectsFromEvalPageHTML(pageHtml) { // Keep this name
     console.log("BG: Subjects extracted by offscreen (first one):", subjects.length > 0 ? subjects[0] : "No subjects");
     return subjects;
 }
+async function extractLessonTypesFromHTML(pageHtml) {
+    console.log("BG: extractLessonTypesFromHTML called.");
+    if (!pageHtml) throw new Error("BG: HTML for lesson type extraction is empty.");
+    const lessonTypes = await parseHTMLViaOffscreen(pageHtml, 'extractLessonTypes');
+    if (!Array.isArray(lessonTypes)) throw new Error("BG: Invalid data for lesson types from offscreen.");
+    console.log("BG: Lesson types extracted:", lessonTypes.length);
+    return lessonTypes;
+}
 async function fetchSubjectEvaluationData(subjectId, eduFormId, tabId) { // Added eduFormId parameter
     console.log(`BG: Fetching evaluation data for subject ID: ${subjectId}, eduFormId: ${eduFormId}`);
     const evalPopupUrl = new URL('studentEvaluationPopup', BASE_AZ_URL).href;
@@ -150,6 +159,36 @@ async function fetchSubjectEvaluationData(subjectId, eduFormId, tabId) { // Adde
     } catch (error) {
         console.error(`BG: Error fetching evaluation data for subject ${subjectId}:`, error);
         return { success: false, error: error.message, details: { attendancePercentage: null, currentEvaluation: null } };
+    }
+}
+async function fetchSeminarGradesForSubject(subjectId, eduFormId, lessonTypeValue, tabId) {
+    console.log(`BG: Fetching seminar grades for subject ID: ${subjectId}, lessonType: ${lessonTypeValue}`);
+    const evalPopupUrl = new URL('studentEvaluationPopup', BASE_AZ_URL).href;
+    
+    const formData = new URLSearchParams();
+    formData.append('id', subjectId);
+    formData.append('lessonType', lessonTypeValue);
+    formData.append('edu_form_id', eduFormId || '450');
+    
+    const reqOpts = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData.toString()
+    };
+    
+    try {
+        const popupHtml = await fetchViaContentScript(tabId, evalPopupUrl, reqOpts);
+        const seminarGrades = await parseHTMLViaOffscreen(popupHtml, 'extractSeminarGrades');
+        return { 
+            success: true, 
+            grades: seminarGrades || []
+        };
+    } catch (error) {
+        console.error(`BG: Error fetching seminar grades for subject ${subjectId}:`, error);
+        return { success: false, error: error.message, grades: [] };
     }
 }
 async function fetchExamResults(tabId) {
@@ -315,6 +354,30 @@ async function fetchAllSubjectEvaluations(subjects, tabId) {
     return results;
 }
 
+// New function to fetch seminar grades for all subjects
+async function fetchAllSeminarGrades(subjects, lessonTypeValue, tabId) {
+    console.log("BG: Fetching seminar grades for all subjects");
+    const results = {};
+    
+    for (const subject of subjects) {
+        if (!subject.id || !subject.eduFormId) {
+            console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
+            results[subject.id || `unknown-${Math.random()}`] = { 
+                success: false, 
+                error: "Missing subject id or eduFormId", 
+                grades: []
+            };
+            continue;
+        }
+        console.log(`BG: Fetching seminar grades for subject: ${subject.name} (ID: ${subject.id})`);
+        const result = await fetchSeminarGradesForSubject(subject.id, subject.eduFormId, lessonTypeValue, tabId);
+        results[subject.id] = result;
+        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+    }
+    
+    return results;
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "contentScriptReady") {
         console.log("BG: Content script ready on:", request.url);
@@ -331,13 +394,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (isCacheStillValid) {
                         const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
                         const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
+                        const cachedSeminarGrades = await getFromStorage(STORAGE_KEYS.SEMINAR_GRADES);
                         
                         if (cachedData) {
-                            console.log("BG: Returning cached academic data with subject evaluations");
+                            console.log("BG: Returning cached academic data with subject evaluations and seminar grades");
                             sendResponse({ 
                                 success: true, 
                                 data: cachedData,
-                                subjectEvaluations: cachedSubjectEvals || {}
+                                subjectEvaluations: cachedSubjectEvals || {},
+                                seminarGrades: cachedSeminarGrades || {}
                             });
                             return;
                         }
@@ -379,12 +444,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (isCacheStillValid) {
                         const cachedData = await getFromStorage(STORAGE_KEYS.ACADEMIC_DATA);
                         const cachedSubjectEvals = await getFromStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS);
+                        const cachedSeminarGrades = await getFromStorage(STORAGE_KEYS.SEMINAR_GRADES);
                         
                         if (cachedData) {
-                            console.log("BG: Using cached academic data with subject evaluations");
+                            console.log("BG: Using cached academic data with subject evaluations and seminar grades");
                             sendResponse({ 
                                 data: cachedData, 
                                 subjectEvaluations: cachedSubjectEvals || {},
+                                seminarGrades: cachedSeminarGrades || {},
                                 fromCache: true 
                             });
                             return;
@@ -467,9 +534,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (!htmlWithSubjects) throw new Error("HTML for subject parsing is empty.");
                 console.log("BG: HTML for subject parsing ready, length:", htmlWithSubjects.length);
 
-                // 5. Extract Subjects
+                // 5. Extract Subjects and Lesson Types
                 subjectsForSelectedSemester = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
                 console.log(`BG: Subjects extracted for ${selectedSemester.text}:`, subjectsForSelectedSemester.length);
+                
+                // Extract lesson types to find Seminar option
+                const lessonTypes = await extractLessonTypesFromHTML(htmlWithSubjects);
+                const seminarLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('seminar') && !lt.text.toLowerCase().includes('distant'));
+                console.log("BG: Lesson types found:", lessonTypes.length, "Seminar type:", seminarLessonType);
 
                 const freshAcademicData = {
                     selectedYear,
@@ -485,15 +557,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     subjectEvaluations = await fetchAllSubjectEvaluations(subjectsForSelectedSemester, request.tabId);
                     console.log("BG: Subject evaluations completed, keys:", Object.keys(subjectEvaluations));
                 }
+                
+                // 7. Fetch seminar grades if we found the Seminar lesson type
+                let seminarGrades = {};
+                if (seminarLessonType && subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
+                    console.log("BG: Fetching seminar grades for all subjects");
+                    seminarGrades = await fetchAllSeminarGrades(subjectsForSelectedSemester, seminarLessonType.value, request.tabId);
+                    console.log("BG: Seminar grades completed, keys:", Object.keys(seminarGrades));
+                }
 
-                // Save both academic data and subject evaluations to cache
+                // Save academic data, subject evaluations, and seminar grades to cache
                 await saveToStorage(STORAGE_KEYS.ACADEMIC_DATA, freshAcademicData);
                 await saveToStorage(STORAGE_KEYS.SUBJECT_EVALUATIONS, subjectEvaluations);
+                await saveToStorage(STORAGE_KEYS.SEMINAR_GRADES, seminarGrades);
                 await saveToStorage(STORAGE_KEYS.LAST_FETCH_TIME, Date.now());
 
                 sendResponse({ 
                     data: freshAcademicData, 
                     subjectEvaluations: subjectEvaluations,
+                    seminarGrades: seminarGrades,
                     fromCache: false 
                 });
 
