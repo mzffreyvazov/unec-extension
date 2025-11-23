@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNEC Data Viewer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --unec-green: #6cb956;
+            --unec-green-dark: #5ca348;
+            --bg-gray: #f3f4f6;
+            --text-dark: #333333;
+            --text-muted: #777777;
+            --card-border: #e7eaec;
+            --white: #ffffff;
+            --danger: #dc3545;
+            --badge-bg: #f8f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-gray);
+            color: var(--text-dark);
+            width: 480px; 
+            min-height: 400px;
+            padding-bottom: 10px;
+        }
+
+        /* HEADER */
+        header {
+            background-color: var(--unec-green);
+            color: var(--white);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-text {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .logo-sub {
+            font-size: 11px;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+
+        .header-icons i {
+            cursor: pointer;
+            font-size: 18px;
+            margin-left: 15px;
+            transition: opacity 0.2s;
+        }
+        .header-icons i:hover { opacity: 0.8; }
+
+        /* CONTROLS (TABS) */
+        .controls {
+            padding: 15px 15px 10px 15px;
+        }
+
+        .tab-group {
+            display: flex;
+            background: #e4e4e4;
+            border-radius: 4px;
+            padding: 2px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--white);
+            color: var(--text-dark);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        /* FILTERS SECTION */
+        .filters-container {
+            padding: 0 15px 10px 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .filter-select {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: var(--white);
+            font-size: 12px;
+            color: var(--text-dark);
+            cursor: pointer;
+            outline: none;
+        }
+
+        .filter-select:focus {
+            border-color: var(--unec-green);
+        }
+
+        .section-label {
+            padding: 5px 15px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* CONTENT AREA */
+        .content-area {
+            padding: 0 15px 15px 15px;
+        }
+
+        /* SHARED CARD STYLES */
+        .subject-card {
+            background: var(--white);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+        }
+
+        .card-header {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--bg-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .subject-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 4px;
+            padding-right: 10px;
+            line-height: 1.4;
+        }
+
+        .credit-badge {
+            background-color: transparent; 
+            color: var(--text-muted);
+            border: 1px solid #d1d5db; 
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .card-body {
+            padding: 15px;
+        }
+
+        /* --- STYLES SPECIFIC TO AKADEMIK TAB --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            text-align: center;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        
+        .stat-item:not(:last-child)::after {
+            content: "";
+            position: absolute;
+            right: -5px;
+            top: 10%;
+            height: 80%;
+            width: 1px;
+            background-color: #eee;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+        .stat-value.danger { color: var(--danger); }
+
+        .card-footer {
+            background-color: #fafafa;
+            padding: 8px 15px;
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            min-height: 40px;
+        }
+
+        .footer-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .seminar-list {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .seminar-list::-webkit-scrollbar { display: none; }
+
+        .seminar-badge {
+            background-color: var(--badge-bg);
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-dark);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .seminar-date { font-weight: 400; color: #888; font-size: 10px; }
+
+        /* --- STYLES SPECIFIC TO NETICELER (RESULTS) TAB --- */
+        .result-body {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .exam-type {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .score-box {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-dark);
+            background-color: var(--badge-bg);
+            border: 1px solid #dee2e6;
+            padding: 6px 12px;
+            border-radius: 6px;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        /* View Toggle Logic */
+        .view-section { display: none; }
+        .view-section.active-view { display: block; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <i class="fa-solid fa-graduation-cap fa-lg"></i>
+            <div>
+                <div class="logo-text">UNEC</div>
+                <div class="logo-sub">Data Viewer</div>
+            </div>
+        </div>
+        <div class="header-icons">
+            <i class="fa-solid fa-arrows-rotate" title="Yenilə"></i>
+            <i class="fa-solid fa-right-from-bracket" title="Çıxış"></i>
+        </div>
+    </header>
+
+    <div class="controls">
+        <div class="tab-group">
+            <button class="tab-btn active" onclick="switchTab('akademik')">Akademik</button>
+            <button class="tab-btn" onclick="switchTab('neticeler')">Nəticələr</button>
+        </div>
+    </div>
+
+    <div class="filters-container">
+        <select class="filter-select">
+            <option value="2024/2025" selected>2024/2025</option>
+            <option value="2023/2024">2023/2024</option>
+            <option value="2022/2023">2022/2023</option>
+        </select>
+        <select class="filter-select">
+            <option value="payiz" selected>Payız semestri</option>
+            <option value="yaz">Yaz semestri</option>
+            <option value="yay">Yay semestri</option>
+        </select>
+    </div>
+
+    <!-- === AKADEMIK TAB CONTENT === -->
+    <div id="view-akademik" class="view-section active-view">
+        <div class="section-label">Fənlər (6)</div>
+        <div class="content-area">
+            
+            <!-- Card 1 -->
+            <div class="subject-card">
+                <div class="card-header">
+                    <div class="subject-name">Avtomatika, məntiq və oyunlar</div>
+                    <span class="credit-badge">5 Kredit</span>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Cari Q.</span>
+                            <span class="stat-value">35</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib %</span>
+                            <span class="stat-value">16.6%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib Sayı</span>
+                            <span class="stat-value">4</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="footer-label">Seminarlar</span>
+                    <div class="seminar-list">
+                        <div class="seminar-badge">10 <span class="seminar-date">(14.10)</span></div>
+                        <div class="seminar-badge">9 <span class="seminar-date">(28.10)</span></div>
+                        <div class="seminar-badge">10 <span class="seminar-date">(11.11)</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="subject-card">
+                <div class="card-header">
+                    <div class="subject-name">Bulud texnologiyaları</div>
+                    <span class="credit-badge">6 Kredit</span>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Cari Q.</span>
+                            <span class="stat-value">48</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib %</span>
+                            <span class="stat-value">0%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib Sayı</span>
+                            <span class="stat-value">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="footer-label">Seminarlar</span>
+                    <div class="seminar-list">
+                        <div class="seminar-badge">10 <span class="seminar-date">(12.10)</span></div>
+                        <div class="seminar-badge">10 <span class="seminar-date">(26.10)</span></div>
+                        <div class="seminar-badge">10 <span class="seminar-date">(09.11)</span></div>
+                        <div class="seminar-badge">10 <span class="seminar-date">(23.11)</span></div>
+                        <div class="seminar-badge">10 <span class="seminar-date">(07.12)</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="subject-card">
+                <div class="card-header">
+                    <div class="subject-name">Mobil və sensor sistemlər</div>
+                    <span class="credit-badge">4 Kredit</span>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Cari Q.</span>
+                            <span class="stat-value">22</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib %</span>
+                            <span class="stat-value danger">26%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Qaib Sayı</span>
+                            <span class="stat-value">12</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="footer-label">Seminarlar</span>
+                    <div class="seminar-list">
+                        <div class="seminar-badge">0 <span class="seminar-date">(15.10)</span></div>
+                        <div class="seminar-badge">8 <span class="seminar-date">(29.10)</span></div>
+                        <div class="seminar-badge">q/b <span class="seminar-date">(12.11)</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- === NETICELER TAB CONTENT === -->
+    <div id="view-neticeler" class="view-section">
+        <div class="section-label">Nəticələr (4)</div>
+        <div class="content-area">
+            
+            <!-- Result 1 -->
+            <div class="subject-card">
+                <div class="card-body result-body">
+                    <div>
+                        <div class="subject-name">Mülki müdafiə</div>
+                        <div class="exam-type">Ara imtahan 1</div>
+                    </div>
+                    <div class="score-box">30</div>
+                </div>
+            </div>
+
+            <!-- Result 2 -->
+            <div class="subject-card">
+                <div class="card-body result-body">
+                    <div>
+                        <div class="subject-name">Süni intellekt</div>
+                        <div class="exam-type">Ara imtahan 1</div>
+                    </div>
+                    <div class="score-box">25</div>
+                </div>
+            </div>
+
+            <!-- Result 3 -->
+            <div class="subject-card">
+                <div class="card-body result-body">
+                    <div>
+                        <div class="subject-name">Paralel və paylanmış hesablamalar</div>
+                        <div class="exam-type">Ara imtahan 1</div>
+                    </div>
+                    <div class="score-box">30</div>
+                </div>
+            </div>
+
+            <!-- Result 4 -->
+            <div class="subject-card">
+                <div class="card-body result-body">
+                    <div>
+                        <div class="subject-name">Bulud texnologiyaları</div>
+                        <div class="exam-type">Ara imtahan 1</div>
+                    </div>
+                    <div class="score-box">29</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            // Update Tab Buttons
+            const buttons = document.querySelectorAll('.tab-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            // Find the clicked button (simplistic approach based on text matching context or just event target)
+            // Here we just find the button that called the function in a real app, 
+            // but since we are inline, let's just select by index for simplicity or add ID.
+            // Better way:
+            if(tabName === 'akademik') {
+                buttons[0].classList.add('active');
+            } else {
+                buttons[1].classList.add('active');
+            }
+
+            // Update Content Views
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active-view'));
+            document.getElementById('view-' + tabName).classList.add('active-view');
+        }
+    </script>
+</body>
+</html>

@@ -1,46 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="az">
 <head>
-    <title>UNEC - Sadə Kabinet</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNEC Data Viewer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>UNEC Data Viewer</h1>
-        <div class="button-group">
-            <button id="loadDataBtn">Akademik Məlumatları Yüklə</button>
-            <button id="loadExamResultsBtn">İmtahan Nəticələrini Yüklə</button>
-        </div>
-        <div id="loading" style="display:none;">Yüklənir...</div>
-        <div id="error" style="display:none; color: red;"></div>
 
-        <div id="selected-year-container" style="display:none;">
-            <h2>Seçilmiş İl:</h2>
-            <p id="selectedYearText"></p>
+    <header>
+        <div class="logo-area">
+            <i class="fa-solid fa-graduation-cap fa-lg"></i>
+            <div>
+                <div class="logo-text">UNEC</div>
+                <div class="logo-sub">Data Viewer</div>
+            </div>
         </div>
-
-        <div id="semesters-container" style="display:none;">
-            <h2>Seçilmiş Semestr:</h2>
-            <p id="selectedSemesterText"></p>
-            <h3>Semestrların Sayı (Seçilmiş il üçün):</h3>
-            <ul id="semestersList"></ul>
+        <div class="header-icons">
+            <i class="fa-solid fa-arrows-rotate" title="Yenilə" id="refreshBtn"></i>
         </div>
+    </header>
 
-        <div id="subjects-container" style="display:none;">
-            <h2>Fənnlər və Qiymətləndirmə:</h2>
-            <ul id="subjectsList"></ul>
+    <div class="controls">
+        <div class="tab-group">
+            <button class="tab-btn active" id="tab-akademik">Akademik</button>
+            <button class="tab-btn" id="tab-neticeler">Nəticələr</button>
         </div>
-
-        <div id="exam-results-container" style="display:none;">
-            <h2>İmtahan Nəticələri:</h2>
-            <p><strong>İl:</strong> <span id="examSelectedYearText"></span></p>
-            <p><strong>Semestr:</strong> <span id="examSelectedSemesterText"></span></p>
-            <div id="examResultsLoading" style="display:none;">Yüklənir...</div>
-            <ul id="examResultsList"></ul>
-        </div>
-
     </div>
+
+    <div id="loading" style="display:none;">Yüklənir...</div>
+    <div id="error" style="display:none;"></div>
+
+    <!-- AKADEMIK TAB CONTENT -->
+    <div id="view-akademik" class="view-section active-view">
+        <div class="section-label" id="subjects-count">Fənlər</div>
+        <div class="content-area" id="subjectsList"></div>
+    </div>
+
+    <!-- NETICELER TAB CONTENT -->
+    <div id="view-neticeler" class="view-section">
+        <div class="section-label" id="exams-count">Nəticələr</div>
+        <div id="examResultsLoading" style="display:none;">Yüklənir...</div>
+        <div class="content-area" id="examResultsList"></div>
+    </div>
+
     <script src="popup.js"></script>
 </body>
 </html>
