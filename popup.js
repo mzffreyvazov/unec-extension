@@ -99,7 +99,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function displaySubjectCards(subjects, subjectEvaluations, seminarGrades) {
         subjectsList.innerHTML = '';
         
-        subjects.forEach(subject => {
+        // Sort subjects: high qaib (>20%) first, then others
+        const sortedSubjects = [...subjects].sort((a, b) => {
+            const aQaib = subjectEvaluations[a.id]?.details?.attendancePercentage;
+            const bQaib = subjectEvaluations[b.id]?.details?.attendancePercentage;
+            
+            const aHigh = aQaib !== null && aQaib !== undefined && parseFloat(aQaib) > 20;
+            const bHigh = bQaib !== null && bQaib !== undefined && parseFloat(bQaib) > 20;
+            
+            if (aHigh && !bHigh) return -1; // a comes first
+            if (!aHigh && bHigh) return 1;  // b comes first
+            return 0; // keep original order
+        });
+        
+        sortedSubjects.forEach(subject => {
             const card = document.createElement('div');
             card.className = 'subject-card';
             card.id = `subject-${subject.id}`;

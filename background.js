@@ -86,19 +86,19 @@ async function parseHTMLViaOffscreen(htmlString, task) {
 }
 
 // --- Core Logic Functions ---
-async function getStudentEvalUrlFromNotePageHTML(pageHtml) { /* ... same ... */
+async function getStudentEvalUrlFromNotePageHTML(pageHtml) { 
     if (!pageHtml) throw new Error("BG: HTML for note/announce page is empty.");
     const href = await parseHTMLViaOffscreen(pageHtml, 'extractEvaluationLinkHref');
     if (!href || typeof href !== 'string') throw new Error("BG: Invalid href for eval link.");
     return new URL(href, BASE_AZ_URL).href;
 }
-async function extractYearsFromEvalPageHTML(pageHtml) { /* ... same ... */
+async function extractYearsFromEvalPageHTML(pageHtml) {
     if (!pageHtml) throw new Error("BG: HTML for year extraction is empty.");
     const years = await parseHTMLViaOffscreen(pageHtml, 'extractYears');
     if (!Array.isArray(years)) throw new Error("BG: Invalid data for years.");
     return years;
 }
-async function fetchSemestersForYearPOST(yearId, csrfToken, tabId) { /* ... same from message #17 ... */
+async function fetchSemestersForYearPOST(yearId, csrfToken, tabId) { 
     const semesterUrl = new URL('getEduSemester', BASE_AZ_URL).href;
     console.log(`BG: POST to ${semesterUrl} for year ID: ${yearId}`);
     const formData = new URLSearchParams(); formData.append('type', 'eduYear'); formData.append('id', yearId);
