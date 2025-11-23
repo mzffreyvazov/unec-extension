@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.id = `subject-${subject.id}`;
             
             const result = subjectEvaluations[subject.id];
+            const credit = subject.credit || '-';
             const cariQ = result?.success && result?.details?.currentEvaluation !== null 
                 ? result.details.currentEvaluation 
                 : '-';
@@ -124,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.innerHTML = `
                 <div class="card-header">
                     <div class="subject-name">${subject.name}</div>
-                    <span class="credit-badge">- Kredit</span>
+                    <span class="credit-badge">${credit} Kredit</span>
                 </div>
                 <div class="card-body">
                     <div class="stats-grid">

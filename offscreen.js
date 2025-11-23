@@ -57,14 +57,16 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 if (subjectRows && subjectRows.length > 0) {
                     subjectRows.forEach(row => {
                         const cells = row.querySelectorAll('td');
-                        // Expecting: 0:№, 1:ID(hidden), 2:Name, 3:Credit, 4:edu_form_id(hidden)
-                        if (cells.length >= 5) { 
+                        // Expecting: 0:№, 1:ID(hidden), 2:Name, 3:Krediti, 4:Group, 5:edu_form_id(hidden)
+                        if (cells.length >= 6) { 
                             const idCell = cells[1];
                             const nameCell = cells[2];
-                            const eduFormIdCell = cells[4]; 
+                            const creditCell = cells[3];
+                            const eduFormIdCell = cells[5]; 
 
                             const subjectId = idCell?.textContent?.trim();
                             let subjectName = nameCell?.textContent?.trim();
+                            const credit = creditCell?.textContent?.trim();
                             const eduFormId = eduFormIdCell?.textContent?.trim();
 
                             // Clean up subject name by removing course code pattern
@@ -83,9 +85,14 @@ chrome.runtime.onMessage.addListener(async (request) => {
                             }
 
                             if (subjectId && subjectName && eduFormId) {
-                                subjects.push({ id: subjectId, name: subjectName, eduFormId: eduFormId });
+                                subjects.push({ 
+                                    id: subjectId, 
+                                    name: subjectName, 
+                                    credit: credit || null,
+                                    eduFormId: eduFormId 
+                                });
                             } else {
-                                console.warn("OFFSCREEN: Missing data for subject row. ID:", subjectId, "Name:", subjectName, "eduFormId:", eduFormId);
+                                console.warn("OFFSCREEN: Missing data for subject row. ID:", subjectId, "Name:", subjectName, "Credit:", credit, "eduFormId:", eduFormId);
                             }
                         }
                     });
