@@ -92,7 +92,9 @@ async function getStudentEvalUrlFromNotePageHTML(pageHtml) {
     if (!pageHtml) throw new Error("BG: HTML for note/announce page is empty.");
     const href = await parseHTMLViaOffscreen(pageHtml, 'extractEvaluationLinkHref');
     if (!href || typeof href !== 'string') throw new Error("BG: Invalid href for eval link.");
-    return new URL(href, BASE_AZ_URL).href;
+    // Ensure the URL uses HTTPS to avoid Mixed Content errors
+    const fullUrl = new URL(href, BASE_AZ_URL).href;
+    return fullUrl.replace(/^http:/, 'https:');
 }
 async function extractYearsFromEvalPageHTML(pageHtml) {
     if (!pageHtml) throw new Error("BG: HTML for year extraction is empty.");
