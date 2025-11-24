@@ -273,13 +273,13 @@ async function fetchExamResults(tabId) {
         const examResultsUrl = `${eresultsUrl}?eyear=${selectedYear.value}&term=${selectedSemester.value}&examType=`;
         const resultsHtml = await fetchViaContentScript(tabId, examResultsUrl);
         
-        // 8. Extract exam results
-        const examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
-        
-        // 9. Also extract exam types from the same HTML
-        console.log("BG: Also extracting exam types from initial fetch");
-        const examTypes = await parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes');
-        console.log("BG: Exam types extracted from initial fetch:", examTypes);
+        // 8-9. OPTIMIZED: Extract exam results and exam types in parallel from the same HTML
+        console.log("BG: Extracting exam results and exam types in parallel");
+        const [examResults, examTypes] = await Promise.all([
+            parseHTMLViaOffscreen(resultsHtml, 'extractExamResults'),
+            parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes')
+        ]);
+        console.log("BG: Exam results extracted:", examResults.length, "Exam types extracted:", examTypes.length);
         
         return {
             success: true,
@@ -305,15 +305,20 @@ async function fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValu
         const examResultsUrl = `${eresultsUrl}?eyear=${yearValue}&term=${semesterValue}&examType=${examTypeValue}`;
         const resultsHtml = await fetchViaContentScript(tabId, examResultsUrl);
         
-        // Parse exam results
-        const examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
+        // OPTIMIZED: Parse exam results and exam types in parallel (when examTypeValue is empty)
+        let examResults, examTypes;
         
-        // Also extract exam types from the same HTML (only when examTypeValue is empty - initial load)
-        let examTypes = null;
         if (!examTypeValue || examTypeValue === '') {
-            console.log("BG: Also extracting exam types from the same HTML");
-            examTypes = await parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes');
-            console.log("BG: Exam types extracted:", examTypes);
+            console.log("BG: Extracting exam results and exam types in parallel");
+            [examResults, examTypes] = await Promise.all([
+                parseHTMLViaOffscreen(resultsHtml, 'extractExamResults'),
+                parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes')
+            ]);
+            console.log("BG: Exam results extracted:", examResults.length, "Exam types extracted:", examTypes.length);
+        } else {
+            // Only extract results when filtering by exam type
+            examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
+            examTypes = null;
         }
         
         return {
@@ -432,98 +437,78 @@ async function fetchViaContentScript(tabId, url, options = {}) {
     }
 }
 
-// New function to fetch all subject evaluations and cache them
-async function fetchAllSubjectEvaluations(subjects, tabId) {
-    console.log("BG: Fetching evaluations for all subjects");
-    const results = {};
+// OPTIMIZED: Fetch all subject data in parallel for maximum speed
+async function fetchAllSubjectData(subjects, seminarTypeValue, muhazireTypeValue, tabId) {
+    console.log("BG: Fetching ALL subject data in parallel (evaluations, seminar grades, absences)");
+    const startTime = Date.now();
     
-    for (const subject of subjects) {
+    // Create parallel requests for ALL subjects at once
+    const subjectPromises = subjects.map(async (subject) => {
         if (!subject.id || !subject.eduFormId) {
             console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
-            results[subject.id || `unknown-${Math.random()}`] = { 
-                success: false, 
-                error: "Missing subject id or eduFormId", 
-                details: { attendancePercentage: null, currentEvaluation: null }
+            return {
+                subjectId: subject.id || `unknown-${Math.random()}`,
+                evaluation: { 
+                    success: false, 
+                    error: "Missing subject id or eduFormId", 
+                    details: { attendancePercentage: null, currentEvaluation: null }
+                },
+                seminarGrades: { success: false, error: "Missing subject id or eduFormId", grades: [] },
+                absenceCount: { success: false, error: "Missing subject id or eduFormId", totalCount: 0 }
             };
-            continue;
-        }
-        console.log(`BG: Fetching evaluation for subject: ${subject.name} (ID: ${subject.id}, eduFormId: ${subject.eduFormId})`);
-        const result = await fetchSubjectEvaluationData(subject.id, subject.eduFormId, tabId);
-        results[subject.id] = result;
-        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
-    }
-    
-    return results;
-}
-
-// New function to fetch seminar grades for all subjects
-async function fetchAllSeminarGrades(subjects, lessonTypeValue, tabId) {
-    console.log("BG: Fetching seminar grades for all subjects");
-    const results = {};
-    
-    for (const subject of subjects) {
-        if (!subject.id || !subject.eduFormId) {
-            console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
-            results[subject.id || `unknown-${Math.random()}`] = { 
-                success: false, 
-                error: "Missing subject id or eduFormId", 
-                grades: []
-            };
-            continue;
-        }
-        console.log(`BG: Fetching seminar grades for subject: ${subject.name} (ID: ${subject.id})`);
-        const result = await fetchSeminarGradesForSubject(subject.id, subject.eduFormId, lessonTypeValue, tabId);
-        results[subject.id] = result;
-        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
-    }
-    
-    return results;
-}
-
-// New function to count absences for all subjects (Seminar + Mühazirə)
-async function countAllAbsences(subjects, seminarTypeValue, muhazireTypeValue, tabId) {
-    console.log("BG: Counting absences for all subjects (Seminar + Mühazirə)");
-    const results = {};
-    
-    for (const subject of subjects) {
-        if (!subject.id || !subject.eduFormId) {
-            console.warn(`BG: Skipping subject due to missing id or eduFormId:`, subject);
-            results[subject.id || `unknown-${Math.random()}`] = { 
-                success: false, 
-                error: "Missing subject id or eduFormId", 
-                totalCount: 0
-            };
-            continue;
         }
         
-        console.log(`BG: Counting absences for subject: ${subject.name} (ID: ${subject.id})`);
-        let totalCount = 0;
+        // For EACH subject, fetch all 3 things in PARALLEL
+        const [evaluation, seminarGrades, seminarAbsences, muhazireAbsences] = await Promise.all([
+            // 1. Evaluation details (attendance %, current grade)
+            fetchSubjectEvaluationData(subject.id, subject.eduFormId, tabId),
+            
+            // 2. Seminar grades (if seminarTypeValue exists)
+            seminarTypeValue 
+                ? fetchSeminarGradesForSubject(subject.id, subject.eduFormId, seminarTypeValue, tabId)
+                : Promise.resolve({ success: true, grades: [] }),
+            
+            // 3. Seminar absences (if seminarTypeValue exists)
+            seminarTypeValue
+                ? countAbsencesForSubject(subject.id, subject.eduFormId, seminarTypeValue, tabId)
+                : Promise.resolve({ success: true, count: 0 }),
+            
+            // 4. Mühazirə absences (if muhazireTypeValue exists)
+            muhazireTypeValue
+                ? countAbsencesForSubject(subject.id, subject.eduFormId, muhazireTypeValue, tabId)
+                : Promise.resolve({ success: true, count: 0 })
+        ]);
         
-        // Count absences in Seminar
-        if (seminarTypeValue) {
-            const seminarResult = await countAbsencesForSubject(subject.id, subject.eduFormId, seminarTypeValue, tabId);
-            if (seminarResult.success) {
-                totalCount += seminarResult.count;
-            }
-            await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
-        }
+        // Combine absence counts
+        const totalAbsenceCount = (seminarAbsences.success ? seminarAbsences.count : 0) + 
+                                  (muhazireAbsences.success ? muhazireAbsences.count : 0);
         
-        // Count absences in Mühazirə
-        if (muhazireTypeValue) {
-            const muhazireResult = await countAbsencesForSubject(subject.id, subject.eduFormId, muhazireTypeValue, tabId);
-            if (muhazireResult.success) {
-                totalCount += muhazireResult.count;
-            }
-            await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
-        }
-        
-        results[subject.id] = { 
-            success: true, 
-            totalCount: totalCount
+        return {
+            subjectId: subject.id,
+            evaluation,
+            seminarGrades,
+            absenceCount: { success: true, totalCount: totalAbsenceCount }
         };
-    }
+    });
     
-    return results;
+    // Wait for ALL subjects to complete
+    const allResults = await Promise.all(subjectPromises);
+    
+    // Transform into the expected format (3 separate objects)
+    const evaluations = {};
+    const seminarGrades = {};
+    const absenceCounts = {};
+    
+    allResults.forEach(result => {
+        evaluations[result.subjectId] = result.evaluation;
+        seminarGrades[result.subjectId] = result.seminarGrades;
+        absenceCounts[result.subjectId] = result.absenceCount;
+    });
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`BG: Fetched ALL subject data in ${elapsed}ms (${subjects.length} subjects, ${subjects.length * 3} requests in parallel)`);
+    
+    return { evaluations, seminarGrades, absenceCounts };
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -688,12 +673,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (!htmlWithSubjects) throw new Error("HTML for subject parsing is empty.");
                 console.log("BG: HTML for subject parsing ready, length:", htmlWithSubjects.length);
 
-                // 5. Extract Subjects and Lesson Types
-                subjectsForSelectedSemester = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
+                // 5. OPTIMIZED: Extract Subjects and Lesson Types in parallel from the same HTML
+                const [subjectsFromHtml, lessonTypes] = await Promise.all([
+                    extractSubjectsFromEvalPageHTML(htmlWithSubjects),
+                    extractLessonTypesFromHTML(htmlWithSubjects)
+                ]);
+                
+                subjectsForSelectedSemester = subjectsFromHtml;
                 console.log(`BG: Subjects extracted for ${selectedSemester.text}:`, subjectsForSelectedSemester.length);
                 
-                // Extract lesson types to find Seminar and Mühazirə options
-                const lessonTypes = await extractLessonTypesFromHTML(htmlWithSubjects);
                 const seminarLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('seminar') && !lt.text.toLowerCase().includes('distant'));
                 const muhazireLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('mühazirə') || lt.text.toLowerCase().includes('muhazire'));
                 console.log("BG: Lesson types found:", lessonTypes.length, "Seminar type:", seminarLessonType, "Mühazirə type:", muhazireLessonType);
@@ -705,33 +693,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     subjects: subjectsForSelectedSemester
                 };
 
-                // 6. Fetch subject evaluations if we have subjects
+                // 6-8. OPTIMIZED: Fetch ALL subject data in parallel (evaluations, seminar grades, absences)
                 let subjectEvaluations = {};
-                if (subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
-                    console.log("BG: Fetching subject evaluations for all subjects");
-                    subjectEvaluations = await fetchAllSubjectEvaluations(subjectsForSelectedSemester, request.tabId);
-                    console.log("BG: Subject evaluations completed, keys:", Object.keys(subjectEvaluations));
-                }
-                
-                // 7. Fetch seminar grades if we found the Seminar lesson type
                 let seminarGrades = {};
-                if (seminarLessonType && subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
-                    console.log("BG: Fetching seminar grades for all subjects");
-                    seminarGrades = await fetchAllSeminarGrades(subjectsForSelectedSemester, seminarLessonType.value, request.tabId);
-                    console.log("BG: Seminar grades completed, keys:", Object.keys(seminarGrades));
-                }
-                
-                // 8. Count absences (q/b) for Seminar and Mühazirə
                 let absenceCounts = {};
+                
                 if (subjectsForSelectedSemester && subjectsForSelectedSemester.length > 0) {
-                    console.log("BG: Counting absences for all subjects (Seminar + Mühazirə)");
-                    absenceCounts = await countAllAbsences(
-                        subjectsForSelectedSemester, 
-                        seminarLessonType?.value, 
-                        muhazireLessonType?.value, 
+                    const result = await fetchAllSubjectData(
+                        subjectsForSelectedSemester,
+                        seminarLessonType?.value,
+                        muhazireLessonType?.value,
                         request.tabId
                     );
-                    console.log("BG: Absence counting completed, keys:", Object.keys(absenceCounts));
+                    
+                    subjectEvaluations = result.evaluations;
+                    seminarGrades = result.seminarGrades;
+                    absenceCounts = result.absenceCounts;
                 }
 
                 // Save academic data, subject evaluations, seminar grades, and absence counts to cache
@@ -847,24 +824,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const urlForSubjects = `${studentEvaluationPageUrl}?eduYear=${request.yearValue}&eduSemester=${request.semesterValue}`;
                 
                 const htmlWithSubjects = await fetchViaContentScript(request.tabId, urlForSubjects);
-                const subjects = await extractSubjectsFromEvalPageHTML(htmlWithSubjects);
                 
-                // Extract lesson types
-                const lessonTypes = await extractLessonTypesFromHTML(htmlWithSubjects);
+                // OPTIMIZED: Extract subjects and lesson types in parallel
+                const [subjects, lessonTypes] = await Promise.all([
+                    extractSubjectsFromEvalPageHTML(htmlWithSubjects),
+                    extractLessonTypesFromHTML(htmlWithSubjects)
+                ]);
+                
                 const seminarLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('seminar') && !lt.text.toLowerCase().includes('distant'));
                 const muhazireLessonType = lessonTypes.find(lt => lt.text.toLowerCase().includes('mühazirə') || lt.text.toLowerCase().includes('muhazire'));
                 
-                // Fetch evaluations, seminar grades, and absence counts
+                // OPTIMIZED: Fetch evaluations, seminar grades, and absence counts in parallel
                 let subjectEvaluations = {};
                 let seminarGrades = {};
                 let absenceCounts = {};
                 
                 if (subjects && subjects.length > 0) {
-                    subjectEvaluations = await fetchAllSubjectEvaluations(subjects, request.tabId);
-                    if (seminarLessonType) {
-                        seminarGrades = await fetchAllSeminarGrades(subjects, seminarLessonType.value, request.tabId);
-                    }
-                    absenceCounts = await countAllAbsences(subjects, seminarLessonType?.value, muhazireLessonType?.value, request.tabId);
+                    const result = await fetchAllSubjectData(
+                        subjects,
+                        seminarLessonType?.value,
+                        muhazireLessonType?.value,
+                        request.tabId
+                    );
+                    
+                    subjectEvaluations = result.evaluations;
+                    seminarGrades = result.seminarGrades;
+                    absenceCounts = result.absenceCounts;
                 }
                 
                 const data = {
