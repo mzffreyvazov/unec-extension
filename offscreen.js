@@ -171,6 +171,24 @@ chrome.runtime.onMessage.addListener(async (request) => {
                 }
                 responsePayload.data = semesters; responsePayload.success = true;
                 console.log("OFFSCREEN: Exam semesters extracted count:", semesters.length);
+            } else if (task === 'extractExamTypes') {
+                console.log("OFFSCREEN: Extracting exam types from HTML");
+                
+                // Log the HTML to see what we're working with (first 1000 chars)
+                console.log("OFFSCREEN: HTML preview:", effectiveHtmlString.substring(0, 1000));
+                
+                const examTypeOptionsElements = doc.querySelectorAll('#examType option');
+                console.log("OFFSCREEN: Found exam type options:", examTypeOptionsElements.length);
+                
+                let examTypes = [];
+                if (examTypeOptionsElements && examTypeOptionsElements.length > 0) {
+                    examTypes = Array.from(examTypeOptionsElements)
+                        .filter(opt => opt.value && opt.value.trim() !== "")
+                        .map(opt => ({ value: opt.value, text: opt.textContent.trim() }));
+                }
+                responsePayload.data = examTypes; responsePayload.success = true;
+                console.log("OFFSCREEN: Exam types extracted count:", examTypes.length);
+                console.log("OFFSCREEN: Exam types:", examTypes);
             } else if (task === 'extractExamResults') {
                 const examRows = doc.querySelectorAll('#eresults-grid tbody tr');
                 let examResults = [];

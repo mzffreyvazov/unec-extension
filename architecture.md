@@ -202,7 +202,16 @@ Detailed Sequence (fetchExamResults)
 
 Alternative (fetchExamResultsForYearAndSemester)
 - If the frontend calls `fetchExamResultsForYearAndSemester`, the background skips steps 2-6 and directly calls:
-  - `GET /az/eresults?eyear={value}&term={value}&examType=` and runs `extractExamResults` on the HTML. This reduces the request count to 1 for this flow.
+  - `GET /az/eresults?eyear={value}&term={value}&examType={examTypeValue}` and runs `extractExamResults` on the HTML. This reduces the request count to 1 for this flow.
+  - The `examTypeValue` parameter is optional - when empty, all exam types are returned; when specified, only results for that exam type are returned.
+
+Exam Type Filtering
+- The extension supports filtering exam results by exam type through the `fetchExamTypesForYearAndSemester` function.
+- After selecting a year and semester, the extension fetches available exam types by:
+  - `GET /az/eresults?eyear={value}&term={value}&examType=` and parsing the `#examType` select element
+  - Offscreen parse using `extractExamTypes` to extract exam type options
+- Users can then filter results by selecting a specific exam type (e.g., "Yekun imtahan", "Ara imtahan 1", etc.)
+- When an exam type is selected, the extension refetches results with the selected exam type value
 
 Number of Requests (exam-only)
 - Full auto flow (fetchExamResults): 3 network requests:
@@ -210,6 +219,7 @@ Number of Requests (exam-only)
   - 1 POST /az/evadata
   - 1 GET /az/eresults?eyear=...&term=... (final list)
 - Direct year/semester fetch (fetchExamResultsForYearAndSemester): 1 network request (the final GET only).
+- Exam type filtering: +1 GET request to fetch available exam types (reuses the same endpoint as results fetch)
 
 Error Handling & Edge Cases
 - If no exam years or no exam semesters are found, the code throws and returns an error result with `success: false`.
@@ -219,11 +229,14 @@ Error Handling & Edge Cases
 Offscreen parsing tasks
 - `extractExamYears` — parse `#Evaluation_eyear` select options into an array of `{ value, text }`.
 - `extractExamSemesters` — parse `<option>` nodes to gather semester options.
+- `extractExamTypes` — parse `#examType` select options to gather exam type options (e.g., "Yekun imtahan", "Ara imtahan 1", etc.).
 - `extractExamResults` — parse `#eresults-grid` table rows into structured result objects: { subject, score, type, date }.
 
 References (functions & handlers)
 - Handler: `chrome.runtime.onMessage` case `fetchExamResults` → calls `fetchExamResults(tabId)`
 - Function: `fetchExamResults(tabId)` — orchestrates the GET/POST GET sequence, parsing and selection logic.
+- Handler: `fetchExamResultsForYearAndSemester` → calls `fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue, examTypeValue)`.
+- Handler: `fetchExamTypesForYearAndSemester` → calls `fetchExamTypesForYearAndSemester(tabId, yearValue, semesterValue)` to fetch available exam types for filtering.
 - Handler: `fetchExamResultsForYearAndSemester` → calls `fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue)`.
 
 ---

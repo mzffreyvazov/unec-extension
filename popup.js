@@ -7,13 +7,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const examResultsList = document.getElementById('examResultsList');
     const yearSelect = document.getElementById('yearSelect');
     const semesterSelect = document.getElementById('semesterSelect');
+    const examTypeSelect = document.getElementById('examTypeSelect');
     
     // Store subjects data globally
     let currentSubjects = [];
     let allYears = [];
     let allSemesters = [];
+    let allExamTypes = [];
     let currentYear = null;
     let currentSemester = null;
+    let currentExamType = null;
 
     // Try to load cached data when popup opens
     async function loadCachedDataOnOpen() {
@@ -96,7 +99,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                     if (currentTab?.url.includes('kabinet.unec.edu.az')) {
                         const examResult = await chrome.runtime.sendMessage({
-                            action: "fetchExamResults"
+                            action: "fetchExamResults",
+                            tabId: currentTab.id
                         });
                         
                         if (examResult && examResult.success && examResult.data) {
@@ -230,6 +234,11 @@ document.addEventListener('DOMContentLoaded', () => {
         examResultsList.innerHTML = '';
         document.getElementById('exams-count').textContent = 'Nəticələr';
         
+        // Reset exam type dropdown
+        examTypeSelect.innerHTML = '<option value="">İmtahan növü seçin...</option>';
+        examTypeSelect.value = '';
+        currentExamType = null;
+        
         loadingDiv.style.display = 'block';
         loadingDiv.textContent = 'Məlumatlar yüklənir...';
 
@@ -262,11 +271,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     action: "fetchExamResultsForYearAndSemester",
                     tabId: currentTab.id,
                     yearValue: selectedYearValue,
-                    semesterValue: selectedSemesterValue
+                    semesterValue: selectedSemesterValue,
+                    examTypeValue: ''
                 });
                 
                 if (examResponse && examResponse.success && examResponse.data) {
                     displayExamData(examResponse.data);
+                    
+                    // Populate exam types dropdown if they were returned
+                    if (examResponse.data.examTypes && examResponse.data.examTypes.length > 0) {
+                        allExamTypes = examResponse.data.examTypes;
+                        populateExamTypeDropdown(allExamTypes);
+                        console.log("POPUP: Populated exam types dropdown with", allExamTypes.length, "types");
+                    } else {
+                        console.log("POPUP: No exam types returned in response");
+                    }
                 }
             } catch (examError) {
                 console.error("POPUP: Error fetching exam results:", examError);
@@ -397,7 +416,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Function to display exam data
     function displayExamData(data, fromCache = false) {
-        const { examResults } = data;
+        const { examResults, examTypes, selectedYear, selectedSemester } = data;
+
+        // Store current year and semester for exam results
+        if (selectedYear) currentYear = selectedYear.value;
+        if (selectedSemester) currentSemester = selectedSemester.value;
+
+        // Populate exam types dropdown if available
+        if (examTypes && examTypes.length > 0) {
+            console.log("POPUP: Populating exam types dropdown from initial fetch with", examTypes.length, "types");
+            allExamTypes = examTypes;
+            populateExamTypeDropdown(examTypes);
+        }
 
         if (examResults && examResults.length > 0) {
             document.getElementById('exams-count').textContent = `Nəticələr (${examResults.length})`;
@@ -454,6 +484,17 @@ document.addEventListener('DOMContentLoaded', () => {
         errorDiv.style.display = 'block';
     }
 
+    // Populate exam type dropdown
+    function populateExamTypeDropdown(examTypes) {
+        examTypeSelect.innerHTML = '<option value="">Hamısı</option>';
+        examTypes.forEach(examType => {
+            const option = document.createElement('option');
+            option.value = examType.value;
+            option.textContent = examType.text;
+            examTypeSelect.appendChild(option);
+        });
+    }
+
     // Tab switching function
     function switchTab(tabName) {
         const buttons = document.querySelectorAll('.tab-btn');
@@ -461,14 +502,58 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (tabName === 'akademik') {
             document.getElementById('tab-akademik').classList.add('active');
+            examTypeSelect.style.display = 'none'; // Hide exam type filter on akademik tab
         } else {
             document.getElementById('tab-neticeler').classList.add('active');
+            // Show exam type filter only if we have year and semester selected
+            if (yearSelect.value && semesterSelect.value) {
+                examTypeSelect.style.display = 'block';
+            }
         }
         
         document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active-view'));
         document.getElementById('view-' + tabName).classList.add('active-view');
     }
 
+    // Handle exam type selection change
+    examTypeSelect.addEventListener('change', async () => {
+        const selectedYearValue = yearSelect.value;
+        const selectedSemesterValue = semesterSelect.value;
+        const selectedExamTypeValue = examTypeSelect.value;
+        
+        if (!selectedYearValue || !selectedSemesterValue) return;
+        
+        loadingDiv.style.display = 'block';
+        loadingDiv.textContent = 'Nəticələr yüklənir...';
+        examResultsList.innerHTML = '';
+        
+        try {
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!currentTab?.url.includes('kabinet.unec.edu.az')) {
+                showError('Zəhmət olmasa UNEC kabinet səhifəsində olun');
+                return;
+            }
+            
+            const examResponse = await chrome.runtime.sendMessage({
+                action: "fetchExamResultsForYearAndSemester",
+                tabId: currentTab.id,
+                yearValue: selectedYearValue,
+                semesterValue: selectedSemesterValue,
+                examTypeValue: selectedExamTypeValue
+            });
+            
+            if (examResponse && examResponse.success && examResponse.data) {
+                displayExamData(examResponse.data);
+            } else {
+                showError(examResponse?.error || 'İmtahan nəticələri yüklənmədi');
+            }
+        } catch (error) {
+            showError('Xəta baş verdi: ' + error.message);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    });
+    
     // Add tab click event listeners
     document.getElementById('tab-akademik').addEventListener('click', () => switchTab('akademik'));
     document.getElementById('tab-neticeler').addEventListener('click', () => switchTab('neticeler'));

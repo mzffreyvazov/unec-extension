@@ -13,9 +13,11 @@ const STORAGE_KEYS = {
     SEMINAR_GRADES: 'seminar_grades',
     ABSENCE_COUNTS: 'absence_counts',
     EXAM_RESULTS: 'exam_results',
+    EXAM_TYPES: 'exam_types',
     LAST_FETCH_TIME: 'last_fetch_time',
     LAST_SUBJECT_EVAL_FETCH_TIME: 'last_subject_eval_fetch_time',
-    LAST_EXAM_FETCH_TIME: 'last_exam_fetch_time'
+    LAST_EXAM_FETCH_TIME: 'last_exam_fetch_time',
+    LAST_EXAM_TYPES_FETCH_TIME: 'last_exam_types_fetch_time'
 };
 
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -274,12 +276,18 @@ async function fetchExamResults(tabId) {
         // 8. Extract exam results
         const examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
         
+        // 9. Also extract exam types from the same HTML
+        console.log("BG: Also extracting exam types from initial fetch");
+        const examTypes = await parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes');
+        console.log("BG: Exam types extracted from initial fetch:", examTypes);
+        
         return {
             success: true,
             data: {
                 selectedYear,
                 selectedSemester,
-                examResults
+                examResults,
+                examTypes
             }
         };
         
@@ -289,25 +297,62 @@ async function fetchExamResults(tabId) {
     }
 }
 
-async function fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue) {
-    console.log("BG: Fetching exam results for specific year/semester:", yearValue, semesterValue);
+async function fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue, examTypeValue = '') {
+    console.log("BG: Fetching exam results for specific year/semester/examType:", yearValue, semesterValue, examTypeValue);
     
     try {
         const eresultsUrl = new URL('eresults', BASE_AZ_URL).href;
-        const examResultsUrl = `${eresultsUrl}?eyear=${yearValue}&term=${semesterValue}&examType=`;
+        const examResultsUrl = `${eresultsUrl}?eyear=${yearValue}&term=${semesterValue}&examType=${examTypeValue}`;
         const resultsHtml = await fetchViaContentScript(tabId, examResultsUrl);
         
+        // Parse exam results
         const examResults = await parseHTMLViaOffscreen(resultsHtml, 'extractExamResults');
+        
+        // Also extract exam types from the same HTML (only when examTypeValue is empty - initial load)
+        let examTypes = null;
+        if (!examTypeValue || examTypeValue === '') {
+            console.log("BG: Also extracting exam types from the same HTML");
+            examTypes = await parseHTMLViaOffscreen(resultsHtml, 'extractExamTypes');
+            console.log("BG: Exam types extracted:", examTypes);
+        }
         
         return {
             success: true,
             data: {
-                examResults
+                examResults,
+                examTypes: examTypes // Will be null if examTypeValue was provided
             }
         };
         
     } catch (error) {
         console.error("BG: Error fetching exam results for year/semester:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function fetchExamTypesForYearAndSemester(tabId, yearValue, semesterValue) {
+    console.log("BG: Fetching exam types for year/semester:", yearValue, semesterValue);
+    
+    try {
+        const eresultsUrl = new URL('eresults', BASE_AZ_URL).href;
+        const examPageUrl = `${eresultsUrl}?eyear=${yearValue}&term=${semesterValue}&examType=`;
+        console.log("BG: Fetching exam types from URL:", examPageUrl);
+        
+        const pageHtml = await fetchViaContentScript(tabId, examPageUrl);
+        console.log("BG: Received HTML length:", pageHtml?.length, "first 500 chars:", pageHtml?.substring(0, 500));
+        
+        const examTypes = await parseHTMLViaOffscreen(pageHtml, 'extractExamTypes');
+        console.log("BG: Parsed exam types:", examTypes);
+        
+        return {
+            success: true,
+            data: {
+                examTypes
+            }
+        };
+        
+    } catch (error) {
+        console.error("BG: Error fetching exam types:", error);
         return { success: false, error: error.message };
     }
 }
@@ -741,20 +786,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                 }
 
-                // Get current tab ID
-                const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                if (!currentTab?.id) throw new Error("Could not get current tab");
+                // Get current tab ID - use provided tabId or query
+                const tabId = request.tabId || (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+                if (!tabId) throw new Error("Could not get current tab");
                 
                 // Ensure content script is ready
-                const isReady = await ensureContentScriptReady(currentTab.id);
+                const isReady = await ensureContentScriptReady(tabId);
                 if (!isReady) {
-                    const injected = await injectContentScriptIfNeeded(currentTab.id);
+                    const injected = await injectContentScriptIfNeeded(tabId);
                     if (!injected) {
                         throw new Error("Content script is not available. Please refresh the page and try again.");
                     }
                 }
                 
-                const result = await fetchExamResults(currentTab.id);
+                const result = await fetchExamResults(tabId);
                 
                 // Save to cache if successful
                 if (result.success) {
@@ -844,12 +889,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     else if (request.action === "fetchExamResultsForYearAndSemester") {
         (async () => {
             try {
-                console.log("BG: fetchExamResultsForYearAndSemester - year:", request.yearValue, "semester:", request.semesterValue);
+                console.log("BG: fetchExamResultsForYearAndSemester - year:", request.yearValue, "semester:", request.semesterValue, "examType:", request.examTypeValue);
                 
-                const result = await fetchExamResultsForYearAndSemester(request.tabId, request.yearValue, request.semesterValue);
+                const result = await fetchExamResultsForYearAndSemester(request.tabId, request.yearValue, request.semesterValue, request.examTypeValue);
                 sendResponse(result);
             } catch (error) {
                 console.error("BG: Error in fetchExamResultsForYearAndSemester handler:", error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+    else if (request.action === "fetchExamTypesForYearAndSemester") {
+        (async () => {
+            try {
+                console.log("BG: fetchExamTypesForYearAndSemester - year:", request.yearValue, "semester:", request.semesterValue);
+                
+                const result = await fetchExamTypesForYearAndSemester(request.tabId, request.yearValue, request.semesterValue);
+                sendResponse(result);
+            } catch (error) {
+                console.error("BG: Error in fetchExamTypesForYearAndSemester handler:", error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
