@@ -163,13 +163,6 @@ Note: In addition to plain per-subject POSTs, other small background calls (e.g.
 
 ---
 
-If you'd like, I can also add a small flow diagram and sample request timelines (for typical N values) to this file, or annotate the exact lines in `background.js` where each fetch is made.
-
----
-
-
----
-
 ## Exam Results — Detailed Fetch Flow
 
 This section expands on the exam-related sequence of calls used to populate the exam results portion of the `popup` and how it's implemented in `background.js`.
@@ -238,9 +231,5 @@ References (functions & handlers)
 - Handler: `fetchExamResultsForYearAndSemester` → calls `fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue, examTypeValue)`.
 - Handler: `fetchExamTypesForYearAndSemester` → calls `fetchExamTypesForYearAndSemester(tabId, yearValue, semesterValue)` to fetch available exam types for filtering.
 - Handler: `fetchExamResultsForYearAndSemester` → calls `fetchExamResultsForYearAndSemester(tabId, yearValue, semesterValue)`.
-
----
-
-If you'd like, I can add a short log snippet or point to exact line numbers inside `background.js` where the flow is implemented (e.g., where `const eresultsUrl = new URL('eresults', BASE_AZ_URL).href;` is declared and used), and add a small diagram to visualize the flow.
 
 
