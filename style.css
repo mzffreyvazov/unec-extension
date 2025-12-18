@@ -229,6 +229,11 @@ header {
     min-height: 40px;
 }
 
+.card-footer.done {
+    background-color: #e8f5e9; /* Light green to indicate completion */
+    border-top-color: #c8e6c9;
+}
+
 .footer-label {
     font-size: 11px;
     font-weight: 600;

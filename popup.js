@@ -367,7 +367,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get seminar grades for this subject
             const seminarResult = seminarGrades[subject.id];
             let seminarBadges = '';
+            let isSeminarDone = false;
             if (seminarResult?.success && seminarResult?.grades && seminarResult.grades.length > 0) {
+                isSeminarDone = seminarResult.grades.length >= 4;
                 // Show all seminar grades
                 seminarBadges = seminarResult.grades.map(grade => 
                     `<div class="seminar-badge">${grade.grade} <span class="seminar-date">(${grade.date})</span></div>`
@@ -402,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </div>
-                <div class="card-footer">
+                <div class="card-footer${isSeminarDone ? ' done' : ''}">
                     <span class="footer-label">Seminar Qiymətləri</span>
                     <div class="seminar-list">
                         ${seminarBadges}
